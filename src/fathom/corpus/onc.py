@@ -62,7 +62,13 @@ def onc_list_archive_files(
     token: str,
     extension: str | None = None,
 ) -> list[str]:
-    """List ONC archived file names for a location and device category over a date range."""
+    """List ONC archived file names for a location and device category over a date range.
+
+    The archive returns every product for the window, not audio alone, so an optional extension
+    restricts the result to audio (for example ``wav``). Filtering is done on the returned file
+    names rather than through the API's extension parameter, which rejects the request; it is
+    matched case-insensitively against the file suffix.
+    """
     params = {
         "method": "getListByLocation",
         "token": token,
@@ -71,7 +77,9 @@ def onc_list_archive_files(
         "dateFrom": date_from,
         "dateTo": date_to,
     }
-    if extension is not None:
-        params["extension"] = extension
     url = f"{_BASE}?{urllib.parse.urlencode(params)}"
-    return parse_archivefiles(http_get_json(url))
+    names = parse_archivefiles(http_get_json(url))
+    if extension is not None:
+        suffix = "." + extension.lower().lstrip(".")
+        names = [name for name in names if name.lower().endswith(suffix)]
+    return names

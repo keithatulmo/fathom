@@ -209,6 +209,16 @@ def _gap_list(
                 "working band; low-frequency channels may be needed via FDSN.",
             }
         )
+    unquantified = sorted(aid for aid, agg in per_source.items() if agg["band_low"] is None)
+    if unquantified:
+        gaps.append(
+            {
+                "criterion": "in-band content fit",
+                "gap": "Band coverage against the working band is not yet quantified for: "
+                + ", ".join(unquantified)
+                + "; it is derivable from each source's sample rate or the 1 kHz decimation step.",
+            }
+        )
     if not per_source:
         gaps.append(
             {

@@ -96,6 +96,23 @@ def test_onc_download_url_carries_token() -> None:
     assert "token=SECRET-TOKEN" in download
 
 
+def test_onc_extension_filters_client_side(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fathom.corpus import onc
+
+    monkeypatch.setattr(
+        onc, "http_get_json", lambda url: {"files": ["a.wav", "b.png", "c.WAV", "d.fft"]}
+    )
+    names = onc.onc_list_archive_files(
+        location_code="SCVIP",
+        device_category_code="HYDROPHONE",
+        date_from="f",
+        date_to="t",
+        token="tok",
+        extension="wav",
+    )
+    assert names == ["a.wav", "c.WAV"]
+
+
 # -- planner dispatch ------------------------------------------------------------------------
 
 
