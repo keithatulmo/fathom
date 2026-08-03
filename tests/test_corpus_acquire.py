@@ -115,6 +115,19 @@ def test_research_only_license_is_not_training_eligible(tmp_path: Path) -> None:
         ledger.close()
 
 
+def test_acquire_records_audio_duration(tmp_path: Path) -> None:
+    import numpy as np
+    import soundfile as sf
+
+    wav = tmp_path / "clip.wav"
+    # 2000 frames at 1000 Hz is two seconds; the header carries the duration.
+    sf.write(str(wav), np.zeros(2000, dtype="float32"), 1000)
+    store = LocalObjectStore(tmp_path / "store")
+    item = AcquisitionItem(origin_url=wav.as_uri(), url=wav.as_uri())
+    result = acquire_batch(_source(), [item], store, tmp_path / "scratch")
+    assert result.manifest.objects[0].duration_s == pytest.approx(2.0)
+
+
 def test_quarantined_dataset_is_not_acquired(tmp_path: Path) -> None:
     store = LocalObjectStore(tmp_path / "store")
     spec = _source(quarantined_dataset=True)

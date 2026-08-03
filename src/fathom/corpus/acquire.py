@@ -114,6 +114,22 @@ def _verify(store: ObjectStore, key: str, fetched: FetchedFile, *, deep: bool) -
             )
 
 
+def _audio_duration(path: Path, media_type: str | None) -> float | None:
+    """Return an audio object's duration in seconds from its header, or None if not audio.
+
+    The duration is read from the container header rather than by decoding the samples, so it is
+    cheap even for a large recording, and it feeds the audit report's hours-by-site accounting.
+    """
+    if media_type is None or not media_type.startswith("audio/"):
+        return None
+    try:
+        import soundfile as sf
+
+        return float(sf.info(str(path)).duration)
+    except Exception:
+        return None
+
+
 def _record(item: AcquisitionItem, spec: SourceSpec, fetched: FetchedFile) -> ObjectRecord:
     return ObjectRecord(
         source_id=spec.source_id,
@@ -133,6 +149,7 @@ def _record(item: AcquisitionItem, spec: SourceSpec, fetched: FetchedFile) -> Ob
         band_low_hz=item.band_low_hz or spec.band_low_hz,
         band_high_hz=item.band_high_hz or spec.band_high_hz,
         band_partial=item.band_partial or spec.band_partial,
+        duration_s=_audio_duration(fetched.path, fetched.media_type),
     )
 
 

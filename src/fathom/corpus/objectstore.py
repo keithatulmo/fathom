@@ -129,7 +129,9 @@ class R2ObjectStore(ObjectStore):
             aws_secret_access_key=secret_key,
             region_name="auto",
             config=Config(
-                signature_version="s3v4", retries={"max_attempts": 5, "mode": "standard"}
+                signature_version="s3v4",
+                s3={"addressing_style": "path"},
+                retries={"max_attempts": 5, "mode": "standard"},
             ),
         )
 
