@@ -286,25 +286,17 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
     lat, lon = SITE_COORDS[args.site]
     radius_m = args.radius_km * 1000.0
     bbox = bbox_for(lat, lon, radius_m)
-    # A fresh run identifier so this correlation supersedes any earlier one under append-only.
-    corr_run = f"corr-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(2)}"
+    # Share a run identifier across sites (pass the same --corr-run for each) so one correlation
+    # pass spans every site; otherwise a fresh identifier supersedes prior runs under append-only.
+    corr_run = (
+        args.corr_run
+        or f"corr-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(2)}"
+    )
 
     store = _open_store(args)
     ledger = Ledger(repo_root / ".fathom" / "ledger.db")
     try:
         objects = ledger.get_corpus_objects()
-        # Load each AIS day once, filtered to the site's bounding box to keep memory bounded.
-        ais_by_date: dict[str, tuple[list[AISRecord], str]] = {}
-        for obj in objects:
-            if obj["source_id"] != args.ais_source:
-                continue
-            key = ais_date_key(str(obj["origin_url"]))
-            if key is None:
-                continue
-            blob = store.get_bytes(str(obj["raw_key"]))  # type: ignore[attr-defined]
-            ais_by_date[key] = (read_ais_records(blob, bbox), str(obj["sha256"]))
-            print(f"  loaded AIS {key}: {len(ais_by_date[key][0])} records within box")
-
         # Recordings to correlate come from real acquired objects and from registered windows
         # (audio not downloaded), unified as (recording_id, origin_url, start, end).
         recordings: list[tuple[str, str, float, float]] = []
@@ -328,6 +320,19 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
                         float(win["end_epoch_s"]),  # type: ignore[arg-type]
                     )
                 )
+
+        # Load only the AIS days these recordings need, filtered to the site's bounding box.
+        needed = {recording_date_key(origin) for _, origin, _, _ in recordings} - {None}
+        ais_by_date: dict[str, tuple[list[AISRecord], str]] = {}
+        for obj in objects:
+            if obj["source_id"] != args.ais_source:
+                continue
+            key = ais_date_key(str(obj["origin_url"]))
+            if key is None or key not in needed:
+                continue
+            blob = store.get_bytes(str(obj["raw_key"]))  # type: ignore[attr-defined]
+            ais_by_date[key] = (read_ais_records(blob, bbox), str(obj["sha256"]))
+            print(f"  loaded AIS {key}: {len(ais_by_date[key][0])} records within box")
 
         recorded = 0
         for recording_id, origin_url, start_s, end_s in recordings:
@@ -446,6 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
     truth.add_argument("--ais-source", default="marinecadastre_ais", help="AIS source id.")
     truth.add_argument("--site", default="mars_monterey_bay", help="Site key with known coords.")
     truth.add_argument("--radius-km", type=float, default=20.0, help="Correlation radius (km).")
+    truth.add_argument("--corr-run", help="Shared correlation run id, to span sites in one pass.")
     truth.add_argument("--r2", action="store_true", help="Read AIS from the R2 bucket (env).")
     truth.add_argument("--local", help="Read AIS from a local directory.")
 
