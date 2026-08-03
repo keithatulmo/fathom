@@ -43,6 +43,10 @@ def marinecadastre_daily_urls(start: str, end: str) -> list[str]:
     return urls
 
 
+# AIS speed-over-ground is reported in tenths of a knot; 102.3 and above encode "not available".
+_SOG_UNAVAILABLE = 102.3
+
+
 @dataclass(frozen=True)
 class AISRecord:
     """One AIS position report."""
@@ -53,6 +57,7 @@ class AISRecord:
     lon: float
     imo: str | None = None
     name: str | None = None
+    sog: float | None = None  # speed over ground, knots, None when unavailable
 
 
 @dataclass(frozen=True)
@@ -80,6 +85,7 @@ class VesselPresence:
     closest_range_m: float
     registry_grade: bool
     truth_tier: int
+    min_sog: float | None = None  # slowest reported speed over ground during the passage, knots
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -131,6 +137,7 @@ def correlate(records: list[AISRecord], window: RecordingWindow) -> list[VesselP
         name = next((r.name for r in hits if r.name), None)
         vessel_id, registry_grade = _registry_identity(mmsi, imo, name)
         ranges = [haversine_m(r.lat, r.lon, window.lat, window.lon) for r in hits]
+        speeds = [r.sog for r in hits if r.sog is not None]
         presences.append(
             VesselPresence(
                 vessel_id=vessel_id,
@@ -142,6 +149,7 @@ def correlate(records: list[AISRecord], window: RecordingWindow) -> list[VesselP
                 closest_range_m=min(ranges),
                 registry_grade=registry_grade,
                 truth_tier=1 if registry_grade else 3,
+                min_sog=min(speeds) if speeds else None,
             )
         )
     return sorted(presences, key=lambda p: p.closest_range_m)
@@ -158,6 +166,15 @@ def parse_marinecadastre_row(row: dict[str, str]) -> AISRecord:
     name = row.get("VesselName", "").strip() or None
     if imo is not None and imo.upper().startswith("IMO"):
         imo = imo[3:].strip() or None
+    sog: float | None = None
+    raw_sog = row.get("SOG", "").strip()
+    if raw_sog:
+        try:
+            value = float(raw_sog)
+        except ValueError:
+            value = _SOG_UNAVAILABLE
+        if 0.0 <= value < _SOG_UNAVAILABLE:
+            sog = value
     # MarineCadastre BaseDateTime is UTC but written without an offset, so it is pinned to UTC
     # explicitly; a naive timestamp would otherwise be read in local time and misalign correlation.
     return AISRecord(
@@ -167,4 +184,5 @@ def parse_marinecadastre_row(row: dict[str, str]) -> AISRecord:
         lon=float(row["LON"]),
         imo=imo,
         name=name,
+        sog=sog,
     )

@@ -166,10 +166,25 @@ CREATE TABLE IF NOT EXISTS corpus_vessel_presence (
     closest_range_m  REAL,
     registry_grade   INTEGER NOT NULL,   -- only registry-grade presence is tier-one truth
     truth_tier       INTEGER NOT NULL,
+    min_sog          REAL,               -- slowest speed over ground during the passage, knots
+    isolation        INTEGER,            -- count of other vessels overlapping the passage in time
+    quiet_tail       INTEGER,            -- 1 when the passage is close, slow, and isolated
     ais_source_sha   TEXT,
     created_at       TEXT NOT NULL
 );
 """
+
+# Columns added to corpus_vessel_presence after its first release; applied to an existing ledger by
+# a lightweight migration, since ADD COLUMN is permitted while the append-only triggers block only
+# UPDATE and DELETE. Each entry is (column, type).
+_MIGRATIONS: dict[str, tuple[tuple[str, str], ...]] = {
+    "corpus_vessel_presence": (
+        ("min_sog", "REAL"),
+        ("isolation", "INTEGER"),
+        ("quiet_tail", "INTEGER"),
+        ("corr_run", "TEXT"),
+    ),
+}
 
 
 def _now_iso() -> str:
@@ -224,8 +239,20 @@ class Ledger:
         self._conn = sqlite3.connect(path)
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.executescript(_SCHEMA)
+        self._apply_migrations()
         self._install_append_only_guards()
         self._conn.commit()
+
+    def _apply_migrations(self) -> None:
+        # Add columns introduced after a table's first release. ADD COLUMN is allowed even though
+        # the table is append-only, because the guards forbid UPDATE and DELETE, not schema growth.
+        for table, columns in _MIGRATIONS.items():
+            existing = {
+                str(row[1]) for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            for name, column_type in columns:
+                if name not in existing:
+                    self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {column_type}")
 
     def _install_append_only_guards(self) -> None:
         for table in _APPEND_ONLY_TABLES:
@@ -313,31 +340,71 @@ class Ledger:
 
     def insert_vessel_presence(self, *, record: dict[str, object]) -> None:
         """Record a vessel's correlated presence in a recording; idempotent by presence id."""
+        row = {
+            "min_sog": None,
+            "isolation": None,
+            "quiet_tail": None,
+            "corr_run": None,
+            **record,
+            "created_at": _now_iso(),
+        }
         self._conn.execute(
             "INSERT OR IGNORE INTO corpus_vessel_presence "
-            "(presence_id, recording_sha, site, vessel_id, mmsi, imo, name, first_seen_s, "
-            " last_seen_s, closest_range_m, registry_grade, truth_tier, ais_source_sha, "
-            " created_at) "
-            "VALUES (:presence_id, :recording_sha, :site, :vessel_id, :mmsi, :imo, :name, "
-            " :first_seen_s, :last_seen_s, :closest_range_m, :registry_grade, :truth_tier, "
-            " :ais_source_sha, :created_at)",
-            {**record, "created_at": _now_iso()},
+            "(presence_id, corr_run, recording_sha, site, vessel_id, mmsi, imo, name, "
+            " first_seen_s, last_seen_s, closest_range_m, registry_grade, truth_tier, min_sog, "
+            " isolation, quiet_tail, ais_source_sha, created_at) "
+            "VALUES (:presence_id, :corr_run, :recording_sha, :site, :vessel_id, :mmsi, :imo, "
+            " :name, :first_seen_s, :last_seen_s, :closest_range_m, :registry_grade, :truth_tier, "
+            " :min_sog, :isolation, :quiet_tail, :ais_source_sha, :created_at)",
+            row,
         )
         self._conn.commit()
+
+    def latest_corr_run(self) -> str | None:
+        """Return the most recent correlation run identifier, or None if none exist.
+
+        Vessel-presence counts are read from the latest correlation run alone, so a re-correlation
+        supersedes an earlier one without deleting it, which the append-only discipline forbids.
+        """
+        row = self._conn.execute(
+            "SELECT corr_run FROM corpus_vessel_presence WHERE corr_run IS NOT NULL "
+            "ORDER BY created_at DESC, rowid DESC LIMIT 1"
+        ).fetchone()
+        return None if row is None else str(row[0])
+
+    def quiet_tail_vessel_counts_by_source(self) -> dict[str, int]:
+        """Return the count of distinct quiet-tail vessels per source in the latest run."""
+        latest = self.latest_corr_run()
+        if latest is None:
+            return {}
+        rows = self._conn.execute(
+            "SELECT o.source_id, COUNT(DISTINCT p.vessel_id) "
+            "FROM corpus_vessel_presence p "
+            "JOIN corpus_objects o ON o.sha256 = p.recording_sha "
+            "WHERE p.quiet_tail = 1 AND p.corr_run = ? "
+            "GROUP BY o.source_id",
+            (latest,),
+        ).fetchall()
+        return {str(row[0]): int(row[1]) for row in rows}
 
     def registry_vessel_counts_by_source(self) -> dict[str, int]:
         """Return the count of distinct registry-grade vessels correlated to each acoustic source.
 
         The count joins each presence to the recording it was correlated against and to that
         recording's source, so it feeds the audit's per-source registry-grade vessel column and the
-        rule-of-three arithmetic that depends on target-side truth volume.
+        rule-of-three arithmetic that depends on target-side truth volume. When a versioned
+        correlation run exists, only its rows count; otherwise all rows count, for backward
+        compatibility with correlations recorded before run versioning.
         """
+        latest = self.latest_corr_run()
+        clause = "" if latest is None else "AND p.corr_run = :corr_run"
         rows = self._conn.execute(
             "SELECT o.source_id, COUNT(DISTINCT p.vessel_id) "
             "FROM corpus_vessel_presence p "
             "JOIN corpus_objects o ON o.sha256 = p.recording_sha "
-            "WHERE p.registry_grade = 1 "
-            "GROUP BY o.source_id"
+            f"WHERE p.registry_grade = 1 {clause} "
+            "GROUP BY o.source_id",
+            {"corr_run": latest},
         ).fetchall()
         return {str(row[0]): int(row[1]) for row in rows}
 
@@ -347,9 +414,16 @@ class Ledger:
         return int(row[0])
 
     def get_vessel_presences(self) -> list[dict[str, object]]:
-        """Return every recorded vessel-presence row as a dictionary."""
+        """Return recorded vessel-presence rows for the latest correlation run, as dictionaries.
+
+        Before any versioned run exists all rows are returned, so a corpus correlated before run
+        versioning still scores; once a versioned run exists, only its rows are returned.
+        """
+        latest = self.latest_corr_run()
+        clause = "" if latest is None else "WHERE corr_run = :corr_run"
         cursor = self._conn.execute(
-            "SELECT * FROM corpus_vessel_presence ORDER BY recording_sha, vessel_id"
+            f"SELECT * FROM corpus_vessel_presence {clause} ORDER BY recording_sha, vessel_id",
+            {"corr_run": latest},
         )
         columns = [description[0] for description in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]

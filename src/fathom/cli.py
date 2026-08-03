@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .manifest import Manifest
@@ -235,6 +237,8 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
     lat, lon = SITE_COORDS[args.site]
     radius_m = args.radius_km * 1000.0
     bbox = bbox_for(lat, lon, radius_m)
+    # A fresh run identifier so this correlation supersedes any earlier one under append-only.
+    corr_run = f"corr-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(2)}"
 
     store = _open_store(args)
     ledger = Ledger(repo_root / ".fathom" / "ledger.db")
@@ -266,6 +270,7 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
                 continue
             ais_records, ais_sha = ais_by_date[key]
             rows = correlate_recording(
+                corr_run=corr_run,
                 recording_sha=str(obj["sha256"]),
                 site=args.site,
                 lat=lat,
@@ -281,11 +286,14 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
             recorded += len(rows)
 
         counts = ledger.registry_vessel_counts_by_source()
+        quiet = ledger.quiet_tail_vessel_counts_by_source()
     finally:
         ledger.close()
 
-    print(f"correlated {recorded} vessel-presence rows for {args.source} at {args.site}")
+    print(f"correlation run {corr_run}")
+    print(f"  correlated {recorded} vessel-presence rows for {args.source} at {args.site}")
     print(f"  distinct registry-grade vessels by source: {counts}")
+    print(f"  distinct quiet-tail vessels by source: {quiet}")
     return 0
 
 

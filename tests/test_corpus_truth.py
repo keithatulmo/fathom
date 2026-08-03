@@ -61,6 +61,7 @@ def test_correlation_produces_registry_and_bare_presences() -> None:
     )
     assert window is not None
     rows = correlate_recording(
+        corr_run="test-run",
         recording_sha="r" * 64,
         site="mars_monterey_bay",
         lat=lat,
@@ -76,6 +77,34 @@ def test_correlation_produces_registry_and_bare_presences() -> None:
     assert by_vessel["IMO9000001"]["truth_tier"] == 1
     assert by_vessel["MMSI333"]["registry_grade"] == 0
     assert by_vessel["MMSI333"]["truth_tier"] == 3
+
+
+def test_quiet_tail_classification() -> None:
+    from fathom.corpus.ais import AISRecord
+    from fathom.corpus.truth import correlate_recording
+
+    lat, lon = _site()
+    # One close, slow, isolated vessel (quiet-tail) and one far, fast vessel (not).
+    records = [
+        AISRecord(mmsi="1", epoch_s=100.0, lat=36.713, lon=-122.186, imo="9001", sog=1.5),
+        AISRecord(mmsi="2", epoch_s=100.0, lat=36.90, lon=-122.0, imo="9002", sog=18.0),
+    ]
+    rows = correlate_recording(
+        corr_run="test-run",
+        recording_sha="r" * 64,
+        site="mars_monterey_bay",
+        lat=lat,
+        lon=lon,
+        start_s=0.0,
+        end_s=200.0,
+        radius_m=30_000.0,
+        ais_records=records,
+        ais_source_sha="a" * 64,
+    )
+    by_vessel = {row["vessel_id"]: row for row in rows}
+    assert by_vessel["IMO9001"]["quiet_tail"] == 1  # close, slow (1.5 kn), isolated
+    assert by_vessel["IMO9001"]["min_sog"] == 1.5
+    assert by_vessel["IMO9002"]["quiet_tail"] == 0  # far and fast
 
 
 def test_ledger_registry_vessel_counts(tmp_path: Path) -> None:
@@ -109,6 +138,7 @@ def test_ledger_registry_vessel_counts(tmp_path: Path) -> None:
             ledger.insert_vessel_presence(
                 record={
                     "presence_id": f"{recording}:{vessel}",
+                    "corr_run": "run1",
                     "recording_sha": recording,
                     "site": "mars_monterey_bay",
                     "vessel_id": vessel,

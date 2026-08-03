@@ -94,16 +94,20 @@ def score_adequacy(
     generated = generated_at or datetime.now(UTC).isoformat()
     family = {spec.source_id: spec.family for spec in FIRST_WAVE}
 
-    # Distinct registry-grade (AIS-verified tier-one) vessels, total and per site.
+    # Distinct registry-grade (AIS-verified tier-one) vessels, total and per site, plus the
+    # kinematically classified quiet-tail cohort and the coarser close-passage proxy.
     registry = {p["vessel_id"] for p in presences if int(p["registry_grade"]) == 1}
     per_site: dict[str, set[str]] = defaultdict(set)
     close_vessels: set[str] = set()
+    quiet_tail_vessels: set[str] = set()
     for p in presences:
         if int(p["registry_grade"]) != 1:
             continue
         per_site[str(p["site"])].add(str(p["vessel_id"]))
         if p["closest_range_m"] is not None and float(p["closest_range_m"]) <= CLOSE_PASSAGE_M:
             close_vessels.add(str(p["vessel_id"]))
+        if p.get("quiet_tail") == 1:
+            quiet_tail_vessels.add(str(p["vessel_id"]))
 
     sites = sorted({str(o["site"]) for o in objects if o["site"]})
     regimes_present = {r for site in sites if (r := SITE_REGIMES.get(site)) is not None}
@@ -120,8 +124,8 @@ def score_adequacy(
 
     criteria = (
         _ca1(biologic_objects, len(presences), len(registry), len(per_site)),
-        _ca2(len(registry), len(close_vessels)),
-        _ca3(len(registry), len(close_vessels)),
+        _ca2(len(registry), len(quiet_tail_vessels), len(close_vessels)),
+        _ca3(len(registry), len(quiet_tail_vessels)),
         _ca4(len(presences)),
         _ca5(sites, regimes_present),
         _ca6(band_sources),
@@ -137,6 +141,7 @@ def score_adequacy(
         "blocking_failures": list(blocking),
         "measured": {
             "distinct_registry_vessels_total": len(registry),
+            "distinct_quiet_tail_vessels": len(quiet_tail_vessels),
             "registry_vessels_by_site": {s: len(v) for s, v in per_site.items()},
             "close_passage_vessels_within_5km": len(close_vessels),
             "sites": sites,
@@ -170,36 +175,35 @@ def _ca1(biologics: int, transits: int, ship_vessels: int, correlated_sites: int
     )
 
 
-def _ca2(registry_total: int, close: int) -> CriterionScore:
+def _ca2(registry_total: int, quiet_tail: int, close: int) -> CriterionScore:
     need = QUIET_HELDOUT_MIN + QUIET_TRAINSIDE_MIN
-    # The close-passage count is only an upper bound on quiet-tail candidates, since quiet-tail also
-    # requires slow and isolated passages, so the proxy being met is marginal, never a clean pass.
-    verdict = MARGINAL if close >= need else FAIL
+    # Quiet-tail is now classified from kinematics; the count meeting the threshold is marginal
+    # rather than a clean pass, because a disjoint held-out/train-side split is still pending.
+    verdict = MARGINAL if quiet_tail >= need else FAIL
     return CriterionScore(
         id="CA2",
         consumer="Quiet-tail proxy vessels for surrogate validation (SD2, E1)",
-        measured=f"{registry_total} registry-grade vessels total; {close} with a close passage "
-        f"(<={CLOSE_PASSAGE_M / 1000:.0f} km); quiet-tail not yet kinematically classified",
+        measured=f"{quiet_tail} quiet-tail vessels (close, slow, isolated); {close} close-only "
+        f"proxy; {registry_total} registry-grade total",
         threshold=f">={QUIET_HELDOUT_MIN} held-out and >={QUIET_TRAINSIDE_MIN} train-side disjoint",
         binding="binding",
         verdict=verdict,
-        directive="Classify quiet-tail passages (needs speed and isolation, not yet recorded) and "
-        f"grow the close/slow/isolated cohort to >={need} disjoint vessels. Close passages number "
-        f"only {close}, and the raw registry total is {registry_total}.",
+        directive=f"Grow the quiet-tail cohort to >={need} disjoint vessels (have {quiet_tail}) by "
+        "correlating more low-traffic passages, then assign the held-out and train-side split.",
     )
 
 
-def _ca3(registry_total: int, close: int) -> CriterionScore:
-    if registry_total < VESSELS_TOTAL_MIN or close < QUIET_TAIL_TOTAL_MIN:
+def _ca3(registry_total: int, quiet_tail: int) -> CriterionScore:
+    if registry_total < VESSELS_TOTAL_MIN or quiet_tail < QUIET_TAIL_TOTAL_MIN:
         verdict = FAIL
     else:
-        # Both proxies met; quiet-tail classification and disjoint split assignment still pending.
+        # Both counts met; disjoint split assignment and its proof are still pending.
         verdict = MARGINAL
     return CriterionScore(
         id="CA3",
         consumer="Vessel-level splits (SD3)",
         measured=f"{registry_total} distinct vessels total (need {VESSELS_TOTAL_MIN}); quiet-tail "
-        f"proxy {close} (need {QUIET_TAIL_TOTAL_MIN}); no vessel-level splits assigned yet",
+        f"{quiet_tail} (need {QUIET_TAIL_TOTAL_MIN}); no vessel-level splits assigned yet",
         threshold=f">={VESSELS_TOTAL_MIN} vessels total, >={QUIET_TAIL_TOTAL_MIN} quiet-tail total",
         binding="binding on the quiet subset",
         verdict=verdict,

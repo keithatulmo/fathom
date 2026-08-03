@@ -30,6 +30,16 @@ BBox = tuple[float, float, float, float]  # (lat_min, lat_max, lon_min, lon_max)
 _MBARI_STAMP = re.compile(r"MARS-(\d{8})T(\d{6})Z")
 _AIS_DATE = re.compile(r"AIS_(\d{4})_(\d{2})_(\d{2})")
 
+# Provisional quiet-tail thresholds: a passage counts as quiet-tail when it is close, slow, and
+# isolated. These are engineering defaults in the spirit of the adequacy note and firm up with data.
+QUIET_TAIL_RANGE_M = 5000.0
+QUIET_TAIL_SOG_KN = 5.0
+QUIET_TAIL_ISOLATION_MAX = 3
+
+
+def _overlaps(a_start: float, a_end: float, b_start: float, b_end: float) -> bool:
+    return a_start <= b_end and b_start <= a_end
+
 
 def bbox_for(lat: float, lon: float, radius_m: float) -> BBox:
     """Return a latitude/longitude bounding box enclosing a radius around a point.
@@ -95,13 +105,19 @@ def mbari_date_key(origin_url: str) -> str | None:
     return f"{day[0:4]}_{day[4:6]}_{day[6:8]}"
 
 
-def presence_id(recording_sha: str, vessel_id: str) -> str:
-    """Return the stable identifier of a vessel's presence in a recording."""
-    return hash_json({"recording": recording_sha, "vessel": vessel_id})
+def presence_id(corr_run: str, recording_sha: str, vessel_id: str) -> str:
+    """Return the identifier of a vessel's presence in a recording under a correlation run.
+
+    The correlation run identifier is part of the key so that a re-correlation, for example after
+    the quiet-tail classifier or its thresholds change, writes a fresh superseding set of rows
+    rather than being ignored by the append-only ledger.
+    """
+    return hash_json({"run": corr_run, "recording": recording_sha, "vessel": vessel_id})
 
 
 def correlate_recording(
     *,
+    corr_run: str,
     recording_sha: str,
     site: str,
     lat: float,
@@ -116,11 +132,30 @@ def correlate_recording(
     window = RecordingWindow(
         site=site, lat=lat, lon=lon, start_epoch_s=start_s, end_epoch_s=end_s, radius_m=radius_m
     )
+    presences = correlate(ais_records, window)
     rows: list[dict[str, object]] = []
-    for presence in correlate(ais_records, window):
+    for presence in presences:
+        # Isolation is the count of other vessels whose passage overlaps this one in time; a
+        # quiet-tail passage is close, slow, and isolated, the scarce resource the note names.
+        isolation = sum(
+            1
+            for other in presences
+            if other.vessel_id != presence.vessel_id
+            and _overlaps(
+                presence.first_seen_s,
+                presence.last_seen_s,
+                other.first_seen_s,
+                other.last_seen_s,
+            )
+        )
+        is_close = presence.closest_range_m <= QUIET_TAIL_RANGE_M
+        is_slow = presence.min_sog is not None and presence.min_sog <= QUIET_TAIL_SOG_KN
+        is_isolated = isolation <= QUIET_TAIL_ISOLATION_MAX
+        quiet_tail = int(presence.registry_grade and is_close and is_slow and is_isolated)
         rows.append(
             {
-                "presence_id": presence_id(recording_sha, presence.vessel_id),
+                "presence_id": presence_id(corr_run, recording_sha, presence.vessel_id),
+                "corr_run": corr_run,
                 "recording_sha": recording_sha,
                 "site": site,
                 "vessel_id": presence.vessel_id,
@@ -132,6 +167,9 @@ def correlate_recording(
                 "closest_range_m": presence.closest_range_m,
                 "registry_grade": int(presence.registry_grade),
                 "truth_tier": presence.truth_tier,
+                "min_sog": presence.min_sog,
+                "isolation": isolation,
+                "quiet_tail": quiet_tail,
                 "ais_source_sha": ais_source_sha,
             }
         )
