@@ -125,7 +125,7 @@ FIRST_WAVE: tuple[SourceSpec, ...] = (
         site="adeon_atlantic",
         instrument="lander_hydrophone",
         s3_bucket="noaa-passive-bioacoustic",
-        notes="Public via gs://noaa-passive-bioacoustic over GCS HTTPS; no account required.",
+        notes="Public GCS bucket, no account; ADEON lives under prefix 'adeon/' (verified live).",
     ),
     # Family two: clutter-rich sites, cap 150 GB total.
     SourceSpec(
@@ -158,7 +158,7 @@ FIRST_WAVE: tuple[SourceSpec, ...] = (
         site="sanctsound_multi",
         instrument="moored_hydrophone",
         s3_bucket="noaa-passive-bioacoustic",
-        notes="Public via gs://noaa-passive-bioacoustic; carries the near-lane role with MBARI.",
+        notes="Public GCS bucket; SanctSound lives under prefix 'sanctsound/' (verified live).",
     ),
     SourceSpec(
         source_id="onc_strait_of_georgia",
@@ -172,7 +172,8 @@ FIRST_WAVE: tuple[SourceSpec, ...] = (
         cap_gb=40.0,
         site="strait_of_georgia",
         instrument="cabled_hydrophone",
-        notes="Oceans 3.0 archive-file API; needs FATHOM_ONC_TOKEN (a token is now provisioned).",
+        notes="Oceans 3.0 archive-file API; needs FATHOM_ONC_TOKEN. Location SCVIP or SEVIP "
+        "(Strait of Georgia, verified live).",
     ),
     # Family three: vessel-truth substrate, cap 50 GB plus negligible AIS volume.
     SourceSpec(
@@ -235,11 +236,12 @@ FIRST_WAVE: tuple[SourceSpec, ...] = (
         role="tier-one biologic labels, low-frequency baleen",
         license_class=LicenseClass.PUBLIC,
         license_evidence_url="https://www.soest.hawaii.edu/ore/dclde/",
-        access_class=AccessClass.HTTPS,
+        access_class=AccessClass.GCS_HTTPS,
         truth_condition_default="tier1_curated_biologic",
         cap_gb=25.0,
         instrument="annotation_product",
-        notes="Each set's license is recorded per set at acquisition.",
+        s3_bucket="noaa-passive-bioacoustic",
+        notes="In the NCEI bucket under prefix 'dclde/'; per-set license recorded at acquisition.",
     ),
 )
 

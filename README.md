@@ -74,8 +74,10 @@ uv run fathom corpus-probe mbari_pacific_sound_2khz --limit 8
 uv run fathom acquire mbari_pacific_sound_2khz --prefix "2015/07/" --limit 20 --r2
 
 # Families 1, 2, 4 — NCEI (public Google bucket): list under a prefix, then acquire.
-uv run fathom corpus-probe adeon_ncei --prefix "ADEON/" --limit 20
-uv run fathom acquire adeon_ncei --prefix "ADEON/" --limit 20 --r2
+# Verified prefixes are lowercase: adeon/, sanctsound/, dclde/.
+uv run fathom corpus-probe adeon_ncei --prefix "adeon/" --limit 20
+uv run fathom acquire adeon_ncei --prefix "adeon/" --limit 20 --r2
+uv run fathom acquire dclde_baleen --prefix "dclde/" --limit 20 --r2
 
 # Family 1 — OOI (Apache archive): enumerate one named month directory, then acquire.
 uv run fathom acquire ooi_slope_base_broadband --index-url "https://rawdata.oceanobservatories.org/files/<site>/<node>/<instrument>/2015/07/28/" --limit 24 --r2
@@ -83,11 +85,8 @@ uv run fathom acquire ooi_slope_base_broadband --index-url "https://rawdata.ocea
 # Family 3 — MarineCadastre AIS (bulk zips): acquire the days overlapping your recordings.
 uv run fathom acquire marinecadastre_ais --date-start 2015-07-28 --date-end 2015-07-31 --r2
 
-# Family 2 — ONC (credentialed): needs FATHOM_ONC_TOKEN; give a location, device category, and dates.
-uv run fathom acquire onc_strait_of_georgia --onc-location SOG --onc-device-category HYDROPHONE --date-start 2019-06-01 --date-end 2019-06-02 --r2
-
-# Any source: acquire explicit object URLs (for example a DCLDE set).
-uv run fathom acquire dclde_baleen --url "https://.../set/file01.wav" --url "https://.../set/file02.wav" --r2
+# Family 2 — ONC (credentialed): needs FATHOM_ONC_TOKEN; Strait of Georgia is SCVIP (or SEVIP).
+uv run fathom acquire onc_strait_of_georgia --onc-location SCVIP --onc-device-category HYDROPHONE --date-start 2019-06-01 --date-end 2019-06-02 --r2
 
 uv run fathom corpus-audit
 ```
