@@ -10,9 +10,9 @@ from pathlib import Path
 from fathom.corpus.truth import (
     bbox_for,
     correlate_recording,
-    mbari_date_key,
-    mbari_recording_window,
     read_ais_records,
+    recording_date_key,
+    recording_window,
 )
 from fathom.ledger import Ledger
 
@@ -45,18 +45,18 @@ def test_bbox_filter_excludes_distant_vessels() -> None:
 
 def test_recording_window_from_filename() -> None:
     url = "s3://pacific-sound-2khz/2015/07/MARS-20150728T000000Z-2kHz.wav"
-    window = mbari_recording_window(url, 86400.0)
+    window = recording_window(url, 86400.0)
     assert window is not None
     start, end = window
     assert start == datetime(2015, 7, 28, tzinfo=UTC).timestamp()
     assert end - start == 86400.0
-    assert mbari_date_key(url) == "2015_07_28"
+    assert recording_date_key(url) == "2015_07_28"
 
 
 def test_correlation_produces_registry_and_bare_presences() -> None:
     lat, lon = _site()
     records = read_ais_records(_ais_zip(), bbox_for(lat, lon, 20_000.0))
-    window = mbari_recording_window(
+    window = recording_window(
         "s3://pacific-sound-2khz/2015/07/MARS-20150728T000000Z-2kHz.wav", 86400.0
     )
     assert window is not None

@@ -226,9 +226,9 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
         ais_date_key,
         bbox_for,
         correlate_recording,
-        mbari_date_key,
-        mbari_recording_window,
         read_ais_records,
+        recording_date_key,
+        recording_window,
     )
     from .ledger import Ledger
 
@@ -261,11 +261,11 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
             if obj["source_id"] != args.source or obj["site"] != args.site:
                 continue
             duration = obj["duration_s"]
-            window = mbari_recording_window(
+            window = recording_window(
                 str(obj["origin_url"]),
                 None if duration is None else float(duration),  # type: ignore[arg-type]
             )
-            key = mbari_date_key(str(obj["origin_url"]))
+            key = recording_date_key(str(obj["origin_url"]))
             if window is None or key is None or key not in ais_by_date:
                 continue
             ais_records, ais_sha = ais_by_date[key]

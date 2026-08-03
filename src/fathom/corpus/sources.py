@@ -214,6 +214,25 @@ FIRST_WAVE: tuple[SourceSpec, ...] = (
         quarantined_dataset=True,
         notes="Not acquired: research-only; quarantined from training pending owner ruling.",
     ),
+    # Near-shore SanctSound hydrophones, added for the quiet-tail cohort: shallow moorings where
+    # vessels routinely pass slow and close, unlike the offshore MARS node. Coordinates and rates
+    # come from each deployment's metadata JSON. FLAC, public domain, in the NCEI GCS bucket.
+    SourceSpec(
+        source_id="sanctsound_sb01",
+        name="SanctSound Stellwagen Bank SB01 near-shore hydrophone",
+        family=2,
+        role="near-shore quiet-tail proxy site (Stellwagen Bank, Atlantic)",
+        license_class=LicenseClass.PUBLIC_DOMAIN,
+        license_evidence_url="https://doi.org/10.25921/saca-sp25",
+        access_class=AccessClass.GCS_HTTPS,
+        truth_condition_default="tier1_ais_correlated",
+        cap_gb=40.0,
+        site="stellwagen_sb01",
+        instrument="soundtrap_300_mooring",
+        sample_rate_hz=48000.0,
+        s3_bucket="noaa-passive-bioacoustic",
+        notes="Prefix sanctsound/audio/sb01/...; 48 kHz, ~50 m depth. Coords from deployment JSON.",
+    ),
     # Family four: labeled biologics, cap 50 GB.
     SourceSpec(
         source_id="sanctsound_annotations",

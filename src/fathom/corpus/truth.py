@@ -20,14 +20,17 @@ from datetime import UTC, datetime
 from ..hashing import hash_json
 from .ais import AISRecord, RecordingWindow, correlate, haversine_m, parse_marinecadastre_row
 
-# Known site coordinates (latitude, longitude). Extend as sites are added to the corpus.
+# Known site coordinates (latitude, longitude), from each site's deployment metadata. Extend as
+# sites are added. SanctSound coordinates are read from the deployment's metadata JSON.
 SITE_COORDS: dict[str, tuple[float, float]] = {
     "mars_monterey_bay": (36.7128, -122.186),
+    "stellwagen_sb01": (42.43668, -70.546655),
 }
 
 BBox = tuple[float, float, float, float]  # (lat_min, lat_max, lon_min, lon_max)
 
-_MBARI_STAMP = re.compile(r"MARS-(\d{8})T(\d{6})Z")
+# A UTC timestamp of the form YYYYMMDDTHHMMSSZ, embedded in both MBARI and SanctSound file names.
+_TIMESTAMP = re.compile(r"(\d{8})T(\d{6})Z")
 _AIS_DATE = re.compile(r"AIS_(\d{4})_(\d{2})_(\d{2})")
 
 # Provisional quiet-tail thresholds: a passage counts as quiet-tail when it is close, slow, and
@@ -80,9 +83,14 @@ def read_ais_records(blob: bytes, bbox: BBox | None = None) -> list[AISRecord]:
     return records
 
 
-def mbari_recording_window(origin_url: str, duration_s: float | None) -> tuple[float, float] | None:
-    """Return a MBARI recording's (start, end) epoch seconds from its file name, or None."""
-    match = _MBARI_STAMP.search(origin_url)
+def recording_window(origin_url: str, duration_s: float | None) -> tuple[float, float] | None:
+    """Return a recording's (start, end) epoch seconds from the timestamp in its file name.
+
+    Works for any source whose file name embeds a ``YYYYMMDDTHHMMSSZ`` UTC timestamp, which covers
+    both MBARI and SanctSound. The end is the start plus the recorded duration, or a day when the
+    duration is unknown, so same-day AIS still bounds the correlation.
+    """
+    match = _TIMESTAMP.search(origin_url)
     if match is None:
         return None
     stamp = datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S").replace(tzinfo=UTC)
@@ -97,9 +105,9 @@ def ais_date_key(origin_url: str) -> str | None:
     return None if match is None else f"{match.group(1)}_{match.group(2)}_{match.group(3)}"
 
 
-def mbari_date_key(origin_url: str) -> str | None:
-    """Return the ``YYYY_MM_DD`` key of a MBARI recording, matching the AIS key format."""
-    match = _MBARI_STAMP.search(origin_url)
+def recording_date_key(origin_url: str) -> str | None:
+    """Return the ``YYYY_MM_DD`` key of a recording, matching the AIS key format."""
+    match = _TIMESTAMP.search(origin_url)
     if match is None:
         return None
     day = match.group(1)
