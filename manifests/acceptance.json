@@ -1,0 +1,63 @@
+{
+  "name": "acceptance",
+  "seed": 20260803,
+  "description": "The WO-1 acceptance path: a trivial band-limited energy-threshold detector scored end to end over a seeded synthetic corpus with known, tiered truth.",
+  "report_node": "score",
+  "nodes": [
+    {
+      "id": "fixtures",
+      "stage": "fixtures",
+      "inputs": {},
+      "config": {
+        "vessels_per_split": 3,
+        "recordings_per_present_vessel": 10,
+        "clutter_channels": 12,
+        "sites": 2,
+        "sample_rate": 2048.0,
+        "duration_s": 1.0,
+        "target_band_hz": [200.0, 300.0],
+        "target_tonal_hz": 250.0,
+        "target_amplitude": 1.0,
+        "noise_amplitude": 0.25,
+        "quarantined_vessels": 1,
+        "guard_hours": 24.0,
+        "calibration_target_events": 500
+      }
+    },
+    {
+      "id": "frontend",
+      "stage": "front_end",
+      "inputs": {"audio": "fixtures:audio"},
+      "config": {"nfft": 256, "hop": 128, "window": "hann", "normalizer": "none"}
+    },
+    {
+      "id": "detect",
+      "stage": "detector",
+      "inputs": {"gram": "frontend:gram"},
+      "config": {"band_low_hz": 200.0, "band_high_hz": 300.0, "energy_scale": 3.0}
+    },
+    {
+      "id": "audit",
+      "stage": "split_audit",
+      "inputs": {"registry": "fixtures:registry", "truth": "fixtures:truth"},
+      "config": {"guard_hours": 24.0, "require_tier_one_eval": true}
+    },
+    {
+      "id": "score",
+      "stage": "scoring",
+      "inputs": {
+        "detections": "detect:detections",
+        "truth": "fixtures:truth",
+        "audit": "audit:audit"
+      },
+      "config": {
+        "operating_threshold": 0.5,
+        "miss_alpha": 0.05,
+        "ece_bins": 15,
+        "ece_min_bin_count": 1,
+        "bootstrap_resamples": 1000,
+        "bootstrap_alpha": 0.05
+      }
+    }
+  ]
+}

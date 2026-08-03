@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# uv / virtual environment
+.venv/
+
+# Fathom local state: the content-addressed store, the lineage ledger, and per-run report
+# files. These are regenerable from the committed code and manifests by construction, so they
+# are not tracked. No binary corpus data is ever committed; the acceptance corpus is generated
+# at run time from a seed.
+/.fathom/

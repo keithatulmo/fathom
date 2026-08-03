@@ -1,0 +1,47 @@
+name: ci
+
+# Continuous integration runs lint, strict types, the unit tests, and the acceptance run with its
+# double-execution hash-equality check on every push and pull request, so that provenance and
+# self-measurement are an enforced property of the build from the first commit.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Sync the locked environment
+        # --frozen fails if uv.lock is out of date, so CI runs the exact locked closure. The
+        # training extra is not installed, which keeps PyTorch out of the acceptance closure.
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Strict types
+        run: uv run mypy
+
+      - name: Unit tests
+        run: uv run pytest
+
+      - name: PyTorch is absent from the acceptance closure (AC7)
+        run: uv run python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('torch') is None else 1)"
+
+      - name: Acceptance run and reproduction (double-execution hash equality)
+        run: |
+          uv run fathom run manifests/acceptance.json
+          run_id="$(ls -t .fathom/runs/*.json | head -1 | xargs basename | sed 's/\.json$//')"
+          echo "acceptance run: ${run_id}"
+          uv run fathom repro "${run_id}"

@@ -1,0 +1,69 @@
+[project]
+name = "fathom"
+version = "0.0.1"
+description = "Fathom evaluation harness and provenance-native pipeline scaffold (Tuor build, WO-1)."
+readme = "README.md"
+requires-python = "==3.12.*"
+license = { text = "Proprietary" }
+
+# Runtime dependency closure for the acceptance path. PyTorch is deliberately absent
+# here and confined to the optional `train` extra, per SD10 Section 6.7 and WO-1 AC7.
+dependencies = [
+    "numpy>=2,<3",
+    "scipy>=1.13",
+    "zarr>=3,<4",
+    "pydantic>=2,<3",
+    "threadpoolctl>=3",
+]
+
+[project.optional-dependencies]
+# Training-only extras. These never enter the acceptance path's dependency closure and
+# are installed explicitly with `uv sync --extra train` when a training experiment needs
+# them. Learned inference is exported to ONNX and executed under ONNX Runtime per SD10.
+train = [
+    "torch>=2",
+    "onnx>=1.16",
+    "onnxruntime>=1.18",
+]
+
+[project.scripts]
+fathom = "fathom.cli:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fathom"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "NPY"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+
+# Third-party numerical and storage libraries whose type stubs are absent or partial.
+# Strictness is retained on all first-party Fathom code; only missing-import noise from
+# these libraries is silenced.
+[[tool.mypy.overrides]]
+module = ["scipy.*", "zarr.*", "numcodecs.*", "threadpoolctl.*"]
+ignore_missing_imports = true
