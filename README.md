@@ -91,6 +91,13 @@ uv run fathom acquire onc_strait_of_georgia --onc-location SCVIP --onc-device-ca
 uv run fathom corpus-audit
 ```
 
+Once acoustic recordings and AIS overlap in time and place, correlate them into tier-one
+vessel-presence truth, which populates the audit's registry-grade vessel counts:
+
+```bash
+uv run fathom corpus-truth --source mbari_pacific_sound_2khz --ais-source marinecadastre_ais --site mars_monterey_bay --radius-km 20 --r2
+```
+
 Acquisition is idempotent because objects are addressed by content hash, per-family volume caps are
 respected, and a research-only or unknown-license source is quarantined from training-designated
 partitions mechanically. Deviations and access-friction findings are recorded in

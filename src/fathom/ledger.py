@@ -23,6 +23,7 @@ _APPEND_ONLY_TABLES = (
     "corpus_sources",
     "corpus_objects",
     "corpus_derivatives",
+    "corpus_vessel_presence",
     "runs",
     "run_status",
     "artifacts",
@@ -149,6 +150,23 @@ CREATE TABLE IF NOT EXISTS corpus_derivatives (
     sample_rate_hz   REAL,
     band_low_hz      REAL,
     band_high_hz     REAL,
+    created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS corpus_vessel_presence (
+    presence_id      TEXT PRIMARY KEY,   -- hash of (recording_sha, vessel_id)
+    recording_sha    TEXT NOT NULL,
+    site             TEXT,
+    vessel_id        TEXT NOT NULL,
+    mmsi             TEXT,
+    imo              TEXT,
+    name             TEXT,
+    first_seen_s     REAL,
+    last_seen_s      REAL,
+    closest_range_m  REAL,
+    registry_grade   INTEGER NOT NULL,   -- only registry-grade presence is tier-one truth
+    truth_tier       INTEGER NOT NULL,
+    ais_source_sha   TEXT,
     created_at       TEXT NOT NULL
 );
 """
@@ -292,6 +310,41 @@ class Ledger:
             {**record, "created_at": _now_iso()},
         )
         self._conn.commit()
+
+    def insert_vessel_presence(self, *, record: dict[str, object]) -> None:
+        """Record a vessel's correlated presence in a recording; idempotent by presence id."""
+        self._conn.execute(
+            "INSERT OR IGNORE INTO corpus_vessel_presence "
+            "(presence_id, recording_sha, site, vessel_id, mmsi, imo, name, first_seen_s, "
+            " last_seen_s, closest_range_m, registry_grade, truth_tier, ais_source_sha, "
+            " created_at) "
+            "VALUES (:presence_id, :recording_sha, :site, :vessel_id, :mmsi, :imo, :name, "
+            " :first_seen_s, :last_seen_s, :closest_range_m, :registry_grade, :truth_tier, "
+            " :ais_source_sha, :created_at)",
+            {**record, "created_at": _now_iso()},
+        )
+        self._conn.commit()
+
+    def registry_vessel_counts_by_source(self) -> dict[str, int]:
+        """Return the count of distinct registry-grade vessels correlated to each acoustic source.
+
+        The count joins each presence to the recording it was correlated against and to that
+        recording's source, so it feeds the audit's per-source registry-grade vessel column and the
+        rule-of-three arithmetic that depends on target-side truth volume.
+        """
+        rows = self._conn.execute(
+            "SELECT o.source_id, COUNT(DISTINCT p.vessel_id) "
+            "FROM corpus_vessel_presence p "
+            "JOIN corpus_objects o ON o.sha256 = p.recording_sha "
+            "WHERE p.registry_grade = 1 "
+            "GROUP BY o.source_id"
+        ).fetchall()
+        return {str(row[0]): int(row[1]) for row in rows}
+
+    def count_vessel_presence(self) -> int:
+        """Return the total number of recorded vessel-presence rows."""
+        row = self._conn.execute("SELECT COUNT(*) FROM corpus_vessel_presence").fetchone()
+        return int(row[0])
 
     # -- runs -------------------------------------------------------------------------------
 

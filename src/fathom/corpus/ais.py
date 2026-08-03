@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 _EARTH_RADIUS_M = 6_371_000.0
 _MARINECADASTRE_TEMPLATE = (
@@ -158,9 +158,11 @@ def parse_marinecadastre_row(row: dict[str, str]) -> AISRecord:
     name = row.get("VesselName", "").strip() or None
     if imo is not None and imo.upper().startswith("IMO"):
         imo = imo[3:].strip() or None
+    # MarineCadastre BaseDateTime is UTC but written without an offset, so it is pinned to UTC
+    # explicitly; a naive timestamp would otherwise be read in local time and misalign correlation.
     return AISRecord(
         mmsi=row["MMSI"].strip(),
-        epoch_s=datetime.fromisoformat(row["BaseDateTime"]).timestamp(),
+        epoch_s=datetime.fromisoformat(row["BaseDateTime"]).replace(tzinfo=UTC).timestamp(),
         lat=float(row["LAT"]),
         lon=float(row["LON"]),
         imo=imo,

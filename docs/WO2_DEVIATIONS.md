@@ -36,12 +36,14 @@ unreachable are recorded here rather than silently dropped.
 
 ## Scaffold-scope narrowings that close with real acquisition
 
-6. **AIS correlation is implemented and tested but not yet bound to specific recordings.** The
-   correlation into registry-grade, tier-one vessel-presence truth is written fresh and unit-tested,
-   including the MMSI-to-IMO/name reconciliation SD3 Section 5.1 requires. Populating per-recording
-   truth rows requires the overlap windows between acoustic recordings and AIS, which are defined
-   during real acquisition; until then the audit reports the vessel-truth column as not yet
-   quantified rather than asserting a count.
+6. **AIS correlation is wired to recordings.** The correlation into registry-grade, tier-one
+   vessel-presence truth is written fresh and unit-tested, including the MMSI-to-IMO/name
+   reconciliation SD3 Section 5.1 requires. It is now bound to recordings by the `fathom
+   corpus-truth` command, which reads the acquired AIS zips, filters to a site's bounding box and
+   each recording's time window, correlates, and records vessel presence in an append-only ledger
+   table. The distinct registry-grade vessel counts feed the audit's per-source column. AIS
+   timestamps are pinned to UTC explicitly, since MarineCadastre writes them without an offset.
+   Site coordinates are carried in a small in-code registry keyed by site.
 
 7. **Decimation reads WAV and FLAC.** The decimation derivative decodes WAV and FLAC via libsndfile.
    Sources delivered in other container formats are recorded honestly and decimated once a decoder

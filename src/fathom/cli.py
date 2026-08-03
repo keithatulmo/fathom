@@ -176,10 +176,11 @@ def _cmd_corpus_audit(args: argparse.Namespace, repo_root: Path) -> int:
     ledger = Ledger(repo_root / ".fathom" / "ledger.db")
     try:
         objects = ledger.get_corpus_objects()
+        counts = ledger.registry_vessel_counts_by_source()
     finally:
         ledger.close()
 
-    report = build_audit_report(objects)
+    report = build_audit_report(objects, vessel_counts=counts or None)
     out_dir = repo_root / ".fathom" / "corpus"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "audit_report.md").write_text(report.markdown, encoding="utf-8")
@@ -188,6 +189,78 @@ def _cmd_corpus_audit(args: argparse.Namespace, repo_root: Path) -> int:
     )
     print(report.markdown)
     print(f"\nwrote {out_dir / 'audit_report.md'} and {out_dir / 'audit_table.json'}")
+    return 0
+
+
+def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
+    from .corpus.ais import AISRecord
+    from .corpus.truth import (
+        SITE_COORDS,
+        ais_date_key,
+        bbox_for,
+        correlate_recording,
+        mbari_date_key,
+        mbari_recording_window,
+        read_ais_records,
+    )
+    from .ledger import Ledger
+
+    if args.site not in SITE_COORDS:
+        raise SystemExit(f"unknown site {args.site!r}; known sites: {', '.join(SITE_COORDS)}")
+    lat, lon = SITE_COORDS[args.site]
+    radius_m = args.radius_km * 1000.0
+    bbox = bbox_for(lat, lon, radius_m)
+
+    store = _open_store(args)
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    try:
+        objects = ledger.get_corpus_objects()
+        # Load each AIS day once, filtered to the site's bounding box to keep memory bounded.
+        ais_by_date: dict[str, tuple[list[AISRecord], str]] = {}
+        for obj in objects:
+            if obj["source_id"] != args.ais_source:
+                continue
+            key = ais_date_key(str(obj["origin_url"]))
+            if key is None:
+                continue
+            blob = store.get_bytes(str(obj["raw_key"]))  # type: ignore[attr-defined]
+            ais_by_date[key] = (read_ais_records(blob, bbox), str(obj["sha256"]))
+            print(f"  loaded AIS {key}: {len(ais_by_date[key][0])} records within box")
+
+        recorded = 0
+        for obj in objects:
+            if obj["source_id"] != args.source or obj["site"] != args.site:
+                continue
+            duration = obj["duration_s"]
+            window = mbari_recording_window(
+                str(obj["origin_url"]),
+                None if duration is None else float(duration),  # type: ignore[arg-type]
+            )
+            key = mbari_date_key(str(obj["origin_url"]))
+            if window is None or key is None or key not in ais_by_date:
+                continue
+            ais_records, ais_sha = ais_by_date[key]
+            rows = correlate_recording(
+                recording_sha=str(obj["sha256"]),
+                site=args.site,
+                lat=lat,
+                lon=lon,
+                start_s=window[0],
+                end_s=window[1],
+                radius_m=radius_m,
+                ais_records=ais_records,
+                ais_source_sha=ais_sha,
+            )
+            for row in rows:
+                ledger.insert_vessel_presence(record=row)
+            recorded += len(rows)
+
+        counts = ledger.registry_vessel_counts_by_source()
+    finally:
+        ledger.close()
+
+    print(f"correlated {recorded} vessel-presence rows for {args.source} at {args.site}")
+    print(f"  distinct registry-grade vessels by source: {counts}")
     return 0
 
 
@@ -251,6 +324,16 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--r2", action="store_true", help="(reserved) publish to R2.")
     audit.add_argument("--local", help="(reserved) publish to a local directory.")
 
+    truth = sub.add_parser(
+        "corpus-truth", help="Correlate AIS to recordings into tier-one vessel truth."
+    )
+    truth.add_argument("--source", default="mbari_pacific_sound_2khz", help="Acoustic source id.")
+    truth.add_argument("--ais-source", default="marinecadastre_ais", help="AIS source id.")
+    truth.add_argument("--site", default="mars_monterey_bay", help="Site key with known coords.")
+    truth.add_argument("--radius-km", type=float, default=20.0, help="Correlation radius (km).")
+    truth.add_argument("--r2", action="store_true", help="Read AIS from the R2 bucket (env).")
+    truth.add_argument("--local", help="Read AIS from a local directory.")
+
     probe = sub.add_parser("corpus-probe", help="List a few keys from a public source (read-only).")
     probe.add_argument("source_id", help="First-wave source identifier.")
     probe.add_argument("--prefix", default="", help="Key prefix to list.")
@@ -274,6 +357,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_acquire(args, repo_root)
     if args.command == "corpus-audit":
         return _cmd_corpus_audit(args, repo_root)
+    if args.command == "corpus-truth":
+        return _cmd_corpus_truth(args, repo_root)
     if args.command == "corpus-probe":
         return _cmd_corpus_probe(args)
     parser.error(f"unknown command {args.command!r}")  # pragma: no cover
