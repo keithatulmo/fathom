@@ -23,6 +23,7 @@ _APPEND_ONLY_TABLES = (
     "corpus_sources",
     "corpus_objects",
     "corpus_derivatives",
+    "corpus_recording_windows",
     "corpus_vessel_presence",
     "runs",
     "run_status",
@@ -151,6 +152,18 @@ CREATE TABLE IF NOT EXISTS corpus_derivatives (
     band_low_hz      REAL,
     band_high_hz     REAL,
     created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS corpus_recording_windows (
+    window_id      TEXT PRIMARY KEY,   -- hash of the audio object's origin URL
+    source_id      TEXT NOT NULL,
+    origin_url     TEXT NOT NULL,      -- the audio object URL, carrying the timestamp
+    site           TEXT,
+    sample_rate_hz REAL,
+    start_epoch_s  REAL NOT NULL,
+    end_epoch_s    REAL NOT NULL,
+    audio_sha256   TEXT,               -- filled if the audio is later acquired for processing
+    created_at     TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS corpus_vessel_presence (
@@ -338,6 +351,39 @@ class Ledger:
         )
         self._conn.commit()
 
+    def insert_recording_window(self, *, record: dict[str, object]) -> None:
+        """Register a recording window without its audio, for AIS correlation.
+
+        A window carries only the identity, timestamp, site, and rate needed to correlate against
+        AIS. The large audio is not downloaded here; it is acquired later only for the recordings
+        that carry quiet-tail passages, so the truth cohort grows on windows and AIS alone.
+        """
+        self._conn.execute(
+            "INSERT OR IGNORE INTO corpus_recording_windows "
+            "(window_id, source_id, origin_url, site, sample_rate_hz, start_epoch_s, end_epoch_s, "
+            " audio_sha256, created_at) "
+            "VALUES (:window_id, :source_id, :origin_url, :site, :sample_rate_hz, :start_epoch_s, "
+            " :end_epoch_s, :audio_sha256, :created_at)",
+            {"audio_sha256": None, **record, "created_at": _now_iso()},
+        )
+        self._conn.commit()
+
+    def get_recording_windows(self, source_id: str) -> list[dict[str, object]]:
+        """Return the registered recording windows for a source, as dictionaries."""
+        cursor = self._conn.execute(
+            "SELECT * FROM corpus_recording_windows WHERE source_id = ? ORDER BY start_epoch_s",
+            (source_id,),
+        )
+        columns = [description[0] for description in cursor.description]
+        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+
+    def count_recording_windows(self, source_id: str) -> int:
+        """Return the number of registered recording windows for a source."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM corpus_recording_windows WHERE source_id = ?", (source_id,)
+        ).fetchone()
+        return int(row[0])
+
     def insert_vessel_presence(self, *, record: dict[str, object]) -> None:
         """Record a vessel's correlated presence in a recording; idempotent by presence id."""
         row = {
@@ -372,41 +418,37 @@ class Ledger:
         ).fetchone()
         return None if row is None else str(row[0])
 
-    def quiet_tail_vessel_counts_by_source(self) -> dict[str, int]:
-        """Return the count of distinct quiet-tail vessels per source in the latest run."""
-        latest = self.latest_corr_run()
-        if latest is None:
-            return {}
-        rows = self._conn.execute(
-            "SELECT o.source_id, COUNT(DISTINCT p.vessel_id) "
-            "FROM corpus_vessel_presence p "
-            "JOIN corpus_objects o ON o.sha256 = p.recording_sha "
-            "WHERE p.quiet_tail = 1 AND p.corr_run = ? "
-            "GROUP BY o.source_id",
-            (latest,),
-        ).fetchall()
-        return {str(row[0]): int(row[1]) for row in rows}
+    def _distinct_vessel_counts(self, predicate: str) -> dict[str, int]:
+        """Count distinct vessels per source under a predicate, over the latest correlation run.
 
-    def registry_vessel_counts_by_source(self) -> dict[str, int]:
-        """Return the count of distinct registry-grade vessels correlated to each acoustic source.
-
-        The count joins each presence to the recording it was correlated against and to that
-        recording's source, so it feeds the audit's per-source registry-grade vessel column and the
-        rule-of-three arithmetic that depends on target-side truth volume. When a versioned
-        correlation run exists, only its rows count; otherwise all rows count, for backward
-        compatibility with correlations recorded before run versioning.
+        The source of each presence is resolved from either the real recording (corpus_objects) or
+        a registered window (corpus_recording_windows), so counts work whether the recording's audio
+        was acquired or only its window. When a versioned run exists, only its rows count.
         """
         latest = self.latest_corr_run()
         clause = "" if latest is None else "AND p.corr_run = :corr_run"
         rows = self._conn.execute(
-            "SELECT o.source_id, COUNT(DISTINCT p.vessel_id) "
+            "SELECT COALESCE(o.source_id, w.source_id) AS src, COUNT(DISTINCT p.vessel_id) "
             "FROM corpus_vessel_presence p "
-            "JOIN corpus_objects o ON o.sha256 = p.recording_sha "
-            f"WHERE p.registry_grade = 1 {clause} "
-            "GROUP BY o.source_id",
+            "LEFT JOIN corpus_objects o ON o.sha256 = p.recording_sha "
+            "LEFT JOIN corpus_recording_windows w ON w.window_id = p.recording_sha "
+            f"WHERE {predicate} {clause} "
+            "GROUP BY src",
             {"corr_run": latest},
         ).fetchall()
-        return {str(row[0]): int(row[1]) for row in rows}
+        return {str(row[0]): int(row[1]) for row in rows if row[0] is not None}
+
+    def quiet_tail_vessel_counts_by_source(self) -> dict[str, int]:
+        """Return the count of distinct quiet-tail vessels per source in the latest run."""
+        return self._distinct_vessel_counts("p.quiet_tail = 1")
+
+    def registry_vessel_counts_by_source(self) -> dict[str, int]:
+        """Return the count of distinct registry-grade vessels correlated to each acoustic source.
+
+        This feeds the audit's per-source registry-grade vessel column and the rule-of-three
+        arithmetic that depends on target-side truth volume.
+        """
+        return self._distinct_vessel_counts("p.registry_grade = 1")
 
     def count_vessel_presence(self) -> int:
         """Return the total number of recorded vessel-presence rows."""

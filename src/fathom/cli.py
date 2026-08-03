@@ -219,6 +219,55 @@ def _cmd_corpus_adequacy(args: argparse.Namespace, repo_root: Path) -> int:
     return 0 if report.sd1_close_met else 3
 
 
+def _cmd_register_windows(args: argparse.Namespace, repo_root: Path) -> int:
+    from .corpus.gcs import gcs_list, gcs_object_url
+    from .corpus.sources import AccessClass, source_by_id
+    from .corpus.truth import recording_date_key, recording_window
+    from .hashing import sha256_hex
+    from .ledger import Ledger
+
+    spec = source_by_id(args.source_id)
+    if spec.access_class != AccessClass.GCS_HTTPS or not spec.s3_bucket:
+        raise SystemExit(f"{spec.source_id} is not a GCS source; window registration needs listing")
+    keys = gcs_list(spec.s3_bucket, args.prefix or "", max_keys=args.limit)
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    registered = 0
+    try:
+        for key in keys:
+            if not key.lower().endswith((".flac", ".wav")):
+                continue
+            origin_url = gcs_object_url(spec.s3_bucket, key)
+            # Filter to a date range so the same window can be registered across sites, letting one
+            # (US-wide) AIS day serve every site.
+            if args.date_start or args.date_end:
+                date_key = recording_date_key(origin_url)
+                iso = None if date_key is None else date_key.replace("_", "-")
+                if iso is None or (args.date_start and iso < args.date_start):
+                    continue
+                if args.date_end and iso > args.date_end:
+                    continue
+            window = recording_window(origin_url, args.window_seconds)
+            if window is None:
+                continue
+            ledger.insert_recording_window(
+                record={
+                    "window_id": sha256_hex(origin_url.encode()),
+                    "source_id": spec.source_id,
+                    "origin_url": origin_url,
+                    "site": spec.site,
+                    "sample_rate_hz": spec.sample_rate_hz,
+                    "start_epoch_s": window[0],
+                    "end_epoch_s": window[1],
+                }
+            )
+            registered += 1
+        total = ledger.count_recording_windows(spec.source_id)
+    finally:
+        ledger.close()
+    print(f"registered {registered} recording windows for {spec.source_id} (total {total})")
+    return 0
+
+
 def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
     from .corpus.ais import AISRecord
     from .corpus.truth import (
@@ -256,7 +305,9 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
             ais_by_date[key] = (read_ais_records(blob, bbox), str(obj["sha256"]))
             print(f"  loaded AIS {key}: {len(ais_by_date[key][0])} records within box")
 
-        recorded = 0
+        # Recordings to correlate come from real acquired objects and from registered windows
+        # (audio not downloaded), unified as (recording_id, origin_url, start, end).
+        recordings: list[tuple[str, str, float, float]] = []
         for obj in objects:
             if obj["source_id"] != args.source or obj["site"] != args.site:
                 continue
@@ -265,18 +316,33 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
                 str(obj["origin_url"]),
                 None if duration is None else float(duration),  # type: ignore[arg-type]
             )
-            key = recording_date_key(str(obj["origin_url"]))
-            if window is None or key is None or key not in ais_by_date:
+            if window is not None:
+                recordings.append((str(obj["sha256"]), str(obj["origin_url"]), *window))
+        for win in ledger.get_recording_windows(args.source):
+            if win["site"] == args.site:
+                recordings.append(
+                    (
+                        str(win["window_id"]),
+                        str(win["origin_url"]),
+                        float(win["start_epoch_s"]),  # type: ignore[arg-type]
+                        float(win["end_epoch_s"]),  # type: ignore[arg-type]
+                    )
+                )
+
+        recorded = 0
+        for recording_id, origin_url, start_s, end_s in recordings:
+            key = recording_date_key(origin_url)
+            if key is None or key not in ais_by_date:
                 continue
             ais_records, ais_sha = ais_by_date[key]
             rows = correlate_recording(
                 corr_run=corr_run,
-                recording_sha=str(obj["sha256"]),
+                recording_sha=recording_id,
                 site=args.site,
                 lat=lat,
                 lon=lon,
-                start_s=window[0],
-                end_s=window[1],
+                start_s=start_s,
+                end_s=end_s,
                 radius_m=radius_m,
                 ais_records=ais_records,
                 ais_source_sha=ais_sha,
@@ -361,6 +427,18 @@ def build_parser() -> argparse.ArgumentParser:
         "corpus-adequacy", help="Score the corpus against the CA1-CA7 adequacy criteria."
     )
 
+    regwin = sub.add_parser(
+        "register-windows", help="Register recording windows for correlation without audio."
+    )
+    regwin.add_argument("source_id", help="GCS acoustic source identifier.")
+    regwin.add_argument("--prefix", default="", help="Audio object prefix to list.")
+    regwin.add_argument("--limit", type=int, default=2000, help="Max files to list.")
+    regwin.add_argument("--date-start", help="Register windows on/after this date (YYYY-MM-DD).")
+    regwin.add_argument("--date-end", help="Register windows on/before this date (YYYY-MM-DD).")
+    regwin.add_argument(
+        "--window-seconds", type=float, default=21600.0, help="Window duration (default 6 h)."
+    )
+
     truth = sub.add_parser(
         "corpus-truth", help="Correlate AIS to recordings into tier-one vessel truth."
     )
@@ -396,6 +474,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_corpus_audit(args, repo_root)
     if args.command == "corpus-adequacy":
         return _cmd_corpus_adequacy(args, repo_root)
+    if args.command == "register-windows":
+        return _cmd_register_windows(args, repo_root)
     if args.command == "corpus-truth":
         return _cmd_corpus_truth(args, repo_root)
     if args.command == "corpus-probe":

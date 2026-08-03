@@ -107,6 +107,48 @@ def test_quiet_tail_classification() -> None:
     assert by_vessel["IMO9002"]["quiet_tail"] == 0  # far and fast
 
 
+def test_window_only_recording_counts(tmp_path: Path) -> None:
+    # A vessel-presence row keyed to a registered window (no audio) still resolves its source.
+    ledger = Ledger(tmp_path / "ledger.db")
+    try:
+        window_id = "w" * 64
+        ledger.insert_recording_window(
+            record={
+                "window_id": window_id,
+                "source_id": "sanctsound_sb01",
+                "origin_url": "https://storage.googleapis.com/x/SB01_20190128T233033Z.flac",
+                "site": "stellwagen_sb01",
+                "sample_rate_hz": 48000.0,
+                "start_epoch_s": 0.0,
+                "end_epoch_s": 21600.0,
+            }
+        )
+        ledger.insert_vessel_presence(
+            record={
+                "presence_id": "p1",
+                "corr_run": "r1",
+                "recording_sha": window_id,
+                "site": "stellwagen_sb01",
+                "vessel_id": "IMO1",
+                "mmsi": "x",
+                "imo": "1",
+                "name": None,
+                "first_seen_s": 0.0,
+                "last_seen_s": 1.0,
+                "closest_range_m": 100.0,
+                "registry_grade": 1,
+                "truth_tier": 1,
+                "quiet_tail": 1,
+                "ais_source_sha": "a" * 64,
+            }
+        )
+        assert ledger.registry_vessel_counts_by_source() == {"sanctsound_sb01": 1}
+        assert ledger.quiet_tail_vessel_counts_by_source() == {"sanctsound_sb01": 1}
+        assert ledger.count_recording_windows("sanctsound_sb01") == 1
+    finally:
+        ledger.close()
+
+
 def test_ledger_registry_vessel_counts(tmp_path: Path) -> None:
     ledger = Ledger(tmp_path / "ledger.db")
     try:
