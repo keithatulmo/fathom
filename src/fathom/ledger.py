@@ -21,6 +21,8 @@ from pathlib import Path
 # Every table is append-only; these triggers make that a property of the database, not a habit.
 _APPEND_ONLY_TABLES = (
     "corpus_sources",
+    "corpus_objects",
+    "corpus_derivatives",
     "runs",
     "run_status",
     "artifacts",
@@ -112,6 +114,42 @@ CREATE TABLE IF NOT EXISTS metrics (
 CREATE TABLE IF NOT EXISTS computation_cache (
     computation_key  TEXT PRIMARY KEY,
     outputs          TEXT NOT NULL    -- JSON mapping output name -> artifact hash
+);
+
+CREATE TABLE IF NOT EXISTS corpus_objects (
+    sha256               TEXT PRIMARY KEY,
+    source_id            TEXT NOT NULL,
+    origin_url           TEXT NOT NULL,
+    retrieved_at         TEXT NOT NULL,
+    byte_count           INTEGER NOT NULL,
+    raw_key              TEXT NOT NULL,
+    license_class        TEXT NOT NULL,
+    license_evidence_url TEXT NOT NULL,
+    truth_condition      TEXT NOT NULL,
+    training_eligible    INTEGER NOT NULL,  -- 0 quarantines the object from training partitions
+    media_type           TEXT,
+    site                 TEXT,
+    instrument           TEXT,
+    sample_rate_hz       REAL,
+    band_low_hz          REAL,
+    band_high_hz         REAL,
+    band_partial         INTEGER NOT NULL DEFAULT 0,
+    duration_s           REAL,
+    batch_id             TEXT,
+    created_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS corpus_derivatives (
+    sha256           TEXT PRIMARY KEY,
+    parent_sha256    TEXT NOT NULL REFERENCES corpus_objects(sha256),
+    derived_key      TEXT NOT NULL,
+    operation        TEXT NOT NULL,
+    params_json      TEXT NOT NULL,
+    byte_count       INTEGER NOT NULL,
+    sample_rate_hz   REAL,
+    band_low_hz      REAL,
+    band_high_hz     REAL,
+    created_at       TEXT NOT NULL
 );
 """
 
@@ -206,6 +244,52 @@ class Ledger:
             "(source_id, name, license, truth_condition, detection_range_r, confirmer_pd, "
             " created_at) VALUES (?, ?, ?, ?, NULL, NULL, ?)",
             (source_id, name, license_, truth_condition, _now_iso()),
+        )
+        self._conn.commit()
+
+    def insert_corpus_object(self, *, batch_id: str, record: dict[str, object]) -> None:
+        """Record an acquired corpus object; idempotent because identity is the content hash.
+
+        The ``training_eligible`` flag is stored as an integer so the license rule of AC2 is a
+        mechanical property of the ledger: a research-only or unknown-license object is filed with
+        the flag cleared and can never be selected into a training-designated partition.
+        """
+        self._conn.execute(
+            "INSERT OR IGNORE INTO corpus_objects "
+            "(sha256, source_id, origin_url, retrieved_at, byte_count, raw_key, license_class, "
+            " license_evidence_url, truth_condition, training_eligible, media_type, site, "
+            " instrument, sample_rate_hz, band_low_hz, band_high_hz, band_partial, duration_s, "
+            " batch_id, created_at) "
+            "VALUES (:sha256, :source_id, :origin_url, :retrieved_at, :byte_count, :raw_key, "
+            " :license_class, :license_evidence_url, :truth_condition, :training_eligible, "
+            " :media_type, :site, :instrument, :sample_rate_hz, :band_low_hz, :band_high_hz, "
+            " :band_partial, :duration_s, :batch_id, :created_at)",
+            {**record, "batch_id": batch_id, "created_at": _now_iso()},
+        )
+        self._conn.commit()
+
+    def corpus_object_exists(self, sha256: str) -> bool:
+        """Return whether a corpus object with the given content hash is recorded."""
+        row = self._conn.execute(
+            "SELECT 1 FROM corpus_objects WHERE sha256 = ?", (sha256,)
+        ).fetchone()
+        return row is not None
+
+    def get_corpus_objects(self) -> list[dict[str, object]]:
+        """Return every recorded corpus object as a dictionary, ordered by source and hash."""
+        cursor = self._conn.execute("SELECT * FROM corpus_objects ORDER BY source_id, sha256")
+        columns = [description[0] for description in cursor.description]
+        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+
+    def insert_corpus_derivative(self, *, record: dict[str, object]) -> None:
+        """Record a derived corpus object with its parent and the operation that produced it."""
+        self._conn.execute(
+            "INSERT OR IGNORE INTO corpus_derivatives "
+            "(sha256, parent_sha256, derived_key, operation, params_json, byte_count, "
+            " sample_rate_hz, band_low_hz, band_high_hz, created_at) "
+            "VALUES (:sha256, :parent_sha256, :derived_key, :operation, :params_json, "
+            " :byte_count, :sample_rate_hz, :band_low_hz, :band_high_hz, :created_at)",
+            {**record, "created_at": _now_iso()},
         )
         self._conn.commit()
 

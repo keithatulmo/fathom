@@ -48,6 +48,36 @@ uv run pytest
 Continuous integration runs lint, strict types, the unit tests, and the acceptance run with its
 double-execution hash-equality check on every push.
 
+## Corpus acquisition (WO-2)
+
+The corpus subsystem acquires the unclassified background and clutter corpus into an S3-compatible
+object store under a content-addressed `raw/`, `derived/`, and `manifests/` layout, records every
+object with its license and truth condition, and generates the audit report that closes SD1.
+Destination credentials are read from the environment only and never entered into the repository.
+
+To point the tooling at the R2 bucket, provide the wiring as environment variables — for example in
+a file outside the repository that you source before running:
+
+```bash
+export FATHOM_R2_ENDPOINT="https://<account>.r2.cloudflarestorage.com"
+export FATHOM_R2_ACCESS_KEY_ID="<access-key-id>"
+export FATHOM_R2_SECRET_ACCESS_KEY="<secret-access-key>"
+export FATHOM_R2_BUCKET="fathom-corpus"
+```
+
+Verify a public source is reachable, acquire objects, and generate the audit report:
+
+```bash
+uv run fathom corpus-probe mbari_pacific_sound_2khz --limit 8
+uv run fathom acquire mbari_pacific_sound_2khz --key "2015/07/MARS-20150728T000000Z-2kHz.wav" --r2
+uv run fathom corpus-audit
+```
+
+Acquisition is idempotent because objects are addressed by content hash, per-family volume caps are
+respected, and a research-only or unknown-license source is quarantined from training-designated
+partitions mechanically. Deviations and access-friction findings are recorded in
+[`docs/WO2_DEVIATIONS.md`](docs/WO2_DEVIATIONS.md).
+
 ## Governing documents
 
 This repository implements two ratified decision memos, which live in the Engineering & Product

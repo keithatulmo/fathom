@@ -6,14 +6,18 @@ readme = "README.md"
 requires-python = "==3.12.*"
 license = { text = "Proprietary" }
 
-# Runtime dependency closure for the acceptance path. PyTorch is deliberately absent
-# here and confined to the optional `train` extra, per SD10 Section 6.7 and WO-1 AC7.
+# Runtime dependency closure. PyTorch is deliberately absent here and confined to the optional
+# `train` extra, per SD10 Section 6.7 and WO-1 AC7. boto3 drives S3-compatible object storage
+# (the R2 corpus bucket and anonymous public source buckets) and soundfile reads WAV and FLAC for
+# the WO-2 decimation derivatives; neither pulls PyTorch, so the acceptance closure stays clean.
 dependencies = [
     "numpy>=2,<3",
     "scipy>=1.13",
     "zarr>=3,<4",
     "pydantic>=2,<3",
     "threadpoolctl>=3",
+    "boto3>=1.34",
+    "soundfile>=0.12",
 ]
 
 [project.optional-dependencies]
@@ -65,5 +69,13 @@ plugins = ["pydantic.mypy"]
 # Strictness is retained on all first-party Fathom code; only missing-import noise from
 # these libraries is silenced.
 [[tool.mypy.overrides]]
-module = ["scipy.*", "zarr.*", "numcodecs.*", "threadpoolctl.*"]
+module = [
+    "scipy.*",
+    "zarr.*",
+    "numcodecs.*",
+    "threadpoolctl.*",
+    "boto3.*",
+    "botocore.*",
+    "soundfile.*",
+]
 ignore_missing_imports = true
