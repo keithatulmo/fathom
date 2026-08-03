@@ -18,7 +18,7 @@ import zipfile
 from datetime import UTC, datetime
 
 from ..hashing import hash_json
-from .ais import AISRecord, RecordingWindow, correlate, parse_marinecadastre_row
+from .ais import AISRecord, RecordingWindow, correlate, haversine_m, parse_marinecadastre_row
 
 # Known site coordinates (latitude, longitude). Extend as sites are added to the corpus.
 SITE_COORDS: dict[str, tuple[float, float]] = {
@@ -35,10 +35,11 @@ _AIS_DATE = re.compile(r"AIS_(\d{4})_(\d{2})_(\d{2})")
 QUIET_TAIL_RANGE_M = 5000.0
 QUIET_TAIL_SOG_KN = 5.0
 QUIET_TAIL_ISOLATION_MAX = 3
-
-
-def _overlaps(a_start: float, a_end: float, b_start: float, b_end: float) -> bool:
-    return a_start <= b_end and b_start <= a_end
+# Isolation is masking at the moment of closest approach: how many other vessels are within
+# acoustic range in a short window around it. A distant vessel or one present at another time does
+# not mask the passage, so isolation is measured here rather than over the whole time in the box.
+ISOLATION_WINDOW_S = 900.0
+ISOLATION_RANGE_M = 10000.0
 
 
 def bbox_for(lat: float, lon: float, radius_m: float) -> BBox:
@@ -135,19 +136,17 @@ def correlate_recording(
     presences = correlate(ais_records, window)
     rows: list[dict[str, object]] = []
     for presence in presences:
-        # Isolation is the count of other vessels whose passage overlaps this one in time; a
-        # quiet-tail passage is close, slow, and isolated, the scarce resource the note names.
-        isolation = sum(
-            1
-            for other in presences
-            if other.vessel_id != presence.vessel_id
-            and _overlaps(
-                presence.first_seen_s,
-                presence.last_seen_s,
-                other.first_seen_s,
-                other.last_seen_s,
-            )
-        )
+        # Isolation is the count of other vessels acoustically nearby at the moment of closest
+        # approach: within the masking range and a short time window. A quiet-tail passage is
+        # close, slow, and isolated, the scarce, unmasked resource the note names.
+        masking = {
+            record.mmsi
+            for record in ais_records
+            if record.mmsi != presence.mmsi
+            and abs(record.epoch_s - presence.closest_time_s) <= ISOLATION_WINDOW_S
+            and haversine_m(record.lat, record.lon, lat, lon) <= ISOLATION_RANGE_M
+        }
+        isolation = len(masking)
         is_close = presence.closest_range_m <= QUIET_TAIL_RANGE_M
         is_slow = presence.min_sog is not None and presence.min_sog <= QUIET_TAIL_SOG_KN
         is_isolated = isolation <= QUIET_TAIL_ISOLATION_MAX

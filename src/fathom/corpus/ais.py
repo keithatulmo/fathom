@@ -86,6 +86,7 @@ class VesselPresence:
     registry_grade: bool
     truth_tier: int
     min_sog: float | None = None  # slowest reported speed over ground during the passage, knots
+    closest_time_s: float = 0.0  # epoch of the closest-approach report, for masking assessment
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -136,7 +137,8 @@ def correlate(records: list[AISRecord], window: RecordingWindow) -> list[VesselP
         imo = next((r.imo for r in hits if r.imo), None)
         name = next((r.name for r in hits if r.name), None)
         vessel_id, registry_grade = _registry_identity(mmsi, imo, name)
-        ranges = [haversine_m(r.lat, r.lon, window.lat, window.lon) for r in hits]
+        ranged = [(haversine_m(r.lat, r.lon, window.lat, window.lon), r.epoch_s) for r in hits]
+        closest_range, closest_time = min(ranged, key=lambda pair: pair[0])
         speeds = [r.sog for r in hits if r.sog is not None]
         presences.append(
             VesselPresence(
@@ -146,10 +148,11 @@ def correlate(records: list[AISRecord], window: RecordingWindow) -> list[VesselP
                 name=name,
                 first_seen_s=min(r.epoch_s for r in hits),
                 last_seen_s=max(r.epoch_s for r in hits),
-                closest_range_m=min(ranges),
+                closest_range_m=closest_range,
                 registry_grade=registry_grade,
                 truth_tier=1 if registry_grade else 3,
                 min_sog=min(speeds) if speeds else None,
+                closest_time_s=closest_time,
             )
         )
     return sorted(presences, key=lambda p: p.closest_range_m)
