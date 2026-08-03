@@ -192,6 +192,31 @@ def _cmd_corpus_audit(args: argparse.Namespace, repo_root: Path) -> int:
     return 0
 
 
+def _cmd_corpus_adequacy(args: argparse.Namespace, repo_root: Path) -> int:
+    from .corpus.adequacy import score_adequacy
+    from .ledger import Ledger
+
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    try:
+        objects = ledger.get_corpus_objects()
+        presences = ledger.get_vessel_presences()
+    finally:
+        ledger.close()
+
+    report = score_adequacy(objects, presences)
+    out_dir = repo_root / ".fathom" / "corpus"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "adequacy_scorecard.md").write_text(report.markdown, encoding="utf-8")
+    (out_dir / "adequacy_table.json").write_text(
+        json.dumps(report.table, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    print(report.markdown)
+    print(f"\nSD1 close met: {report.sd1_close_met}")
+    if report.blocking_failures:
+        print(f"blocking (binding, not passing): {', '.join(report.blocking_failures)}")
+    return 0 if report.sd1_close_met else 3
+
+
 def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
     from .corpus.ais import AISRecord
     from .corpus.truth import (
@@ -324,6 +349,10 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--r2", action="store_true", help="(reserved) publish to R2.")
     audit.add_argument("--local", help="(reserved) publish to a local directory.")
 
+    sub.add_parser(
+        "corpus-adequacy", help="Score the corpus against the CA1-CA7 adequacy criteria."
+    )
+
     truth = sub.add_parser(
         "corpus-truth", help="Correlate AIS to recordings into tier-one vessel truth."
     )
@@ -357,6 +386,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_acquire(args, repo_root)
     if args.command == "corpus-audit":
         return _cmd_corpus_audit(args, repo_root)
+    if args.command == "corpus-adequacy":
+        return _cmd_corpus_adequacy(args, repo_root)
     if args.command == "corpus-truth":
         return _cmd_corpus_truth(args, repo_root)
     if args.command == "corpus-probe":

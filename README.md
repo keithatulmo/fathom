@@ -98,6 +98,14 @@ vessel-presence truth, which populates the audit's registry-grade vessel counts:
 uv run fathom corpus-truth --source mbari_pacific_sound_2khz --ais-source marinecadastre_ais --site mars_monterey_bay --radius-km 20 --r2
 ```
 
+Score the corpus against the CA1–CA7 adequacy criteria (counted in distinct exchangeable units,
+not volume). This is the reproducible checklist the SD1 close is scored against; it exits non-zero
+until every binding criterion passes, and each failure names the axis to grow:
+
+```bash
+uv run fathom corpus-adequacy
+```
+
 Acquisition is idempotent because objects are addressed by content hash, per-family volume caps are
 respected, and a research-only or unknown-license source is quarantined from training-designated
 partitions mechanically. Deviations and access-friction findings are recorded in

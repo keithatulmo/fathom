@@ -346,6 +346,14 @@ class Ledger:
         row = self._conn.execute("SELECT COUNT(*) FROM corpus_vessel_presence").fetchone()
         return int(row[0])
 
+    def get_vessel_presences(self) -> list[dict[str, object]]:
+        """Return every recorded vessel-presence row as a dictionary."""
+        cursor = self._conn.execute(
+            "SELECT * FROM corpus_vessel_presence ORDER BY recording_sha, vessel_id"
+        )
+        columns = [description[0] for description in cursor.description]
+        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+
     # -- runs -------------------------------------------------------------------------------
 
     def insert_run(
