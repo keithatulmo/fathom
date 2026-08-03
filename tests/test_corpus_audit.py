@@ -36,6 +36,16 @@ def test_report_summarizes_source() -> None:
     assert "# Fathom corpus audit report" in report.markdown
 
 
+def test_hours_are_a_partial_sum_when_some_objects_lack_duration() -> None:
+    objects = [_object(duration_s=3600.0), _object(duration_s=None)]
+    report = build_audit_report(objects, generated_at="2026-08-03T00:00:00+00:00")
+    row = report.table["per_source"][0]
+    assert row["hours"] == 1.0
+    assert row["hours_partial"] is True
+    assert row["objects_with_duration"] == 1
+    assert "*" in report.markdown
+
+
 def test_quiet_anchor_ranking_prefers_family_one() -> None:
     objects = [
         _object(

@@ -137,6 +137,7 @@ def _cmd_acquire(args: argparse.Namespace, repo_root: Path) -> int:
                     ais_end=args.date_end,
                     onc_location=args.onc_location,
                     onc_device_category=args.onc_device_category,
+                    onc_extension=args.onc_extension,
                 )
             except PlanningError as exc:
                 raise SystemExit(str(exc)) from exc
@@ -240,6 +241,7 @@ def build_parser() -> argparse.ArgumentParser:
     acquire.add_argument("--date-end", help="Range end (YYYY-MM-DD) for AIS or ONC.")
     acquire.add_argument("--onc-location", help="ONC location code.")
     acquire.add_argument("--onc-device-category", help="ONC device category code.")
+    acquire.add_argument("--onc-extension", help="Restrict ONC files to an extension, e.g. flac.")
     acquire.add_argument("--r2", action="store_true", help="Destination is the R2 bucket (env).")
     acquire.add_argument("--local", help="Destination is a local directory (offline).")
     acquire.add_argument("--no-deep-verify", action="store_true", help="Skip re-hash verification.")

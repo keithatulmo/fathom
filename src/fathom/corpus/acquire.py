@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..ledger import Ledger
-from .fetch import FetchedFile, fetch_anon_s3, fetch_https
+from .fetch import FetchedFile, fetch_anon_s3, fetch_https, guess_media_type
 from .manifest import AcquisitionManifest, ObjectRecord
 from .objectstore import ObjectStore, manifest_key, raw_key
 from .sources import SourceSpec
@@ -45,6 +45,9 @@ class AcquisitionItem:
     s3_bucket: str | None = None
     s3_key: str | None = None
     s3_region: str | None = None
+    # The canonical file name, used to guess media type when the URL carries no extension (ONC
+    # serves the file name as a query parameter, so the URL itself has no suffix to read).
+    media_name: str | None = None
     truth_condition: str | None = None
     site: str | None = None
     instrument: str | None = None
@@ -131,6 +134,11 @@ def _audio_duration(path: Path, media_type: str | None) -> float | None:
 
 
 def _record(item: AcquisitionItem, spec: SourceSpec, fetched: FetchedFile) -> ObjectRecord:
+    # Prefer the media type read from the URL, then fall back to the canonical file name, so a
+    # source that serves files behind a query parameter still records its type and duration.
+    media_type = fetched.media_type or (
+        guess_media_type(item.media_name) if item.media_name else None
+    )
     return ObjectRecord(
         source_id=spec.source_id,
         origin_url=item.origin_url,
@@ -142,14 +150,14 @@ def _record(item: AcquisitionItem, spec: SourceSpec, fetched: FetchedFile) -> Ob
         license_evidence_url=spec.license_evidence_url,
         truth_condition=item.truth_condition or spec.truth_condition_default,
         training_eligible=spec.training_eligible,
-        media_type=fetched.media_type,
+        media_type=media_type,
         site=item.site or spec.site,
         instrument=item.instrument or spec.instrument,
         sample_rate_hz=item.sample_rate_hz or spec.sample_rate_hz,
         band_low_hz=item.band_low_hz or spec.band_low_hz,
         band_high_hz=item.band_high_hz or spec.band_high_hz,
         band_partial=item.band_partial or spec.band_partial,
-        duration_s=_audio_duration(fetched.path, fetched.media_type),
+        duration_s=_audio_duration(fetched.path, media_type),
     )
 
 

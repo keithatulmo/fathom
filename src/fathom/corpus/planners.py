@@ -25,8 +25,10 @@ class PlanningError(RuntimeError):
     """Raised when a source cannot be planned from the given parameters."""
 
 
-def _https_item(url: str, origin: str | None = None) -> AcquisitionItem:
-    return AcquisitionItem(origin_url=origin or url, url=url)
+def _https_item(
+    url: str, origin: str | None = None, media_name: str | None = None
+) -> AcquisitionItem:
+    return AcquisitionItem(origin_url=origin or url, url=url, media_name=media_name)
 
 
 def plan_items(
@@ -40,6 +42,7 @@ def plan_items(
     ais_end: str | None = None,
     onc_location: str | None = None,
     onc_device_category: str | None = None,
+    onc_extension: str | None = None,
 ) -> list[AcquisitionItem]:
     """Return the acquisition items for a source, using the appropriate access method."""
     if urls:
@@ -78,9 +81,10 @@ def plan_items(
             date_from=ais_start,
             date_to=ais_end,
             token=token,
+            extension=onc_extension,
         )
         return [
-            _https_item(onc_download_url(name, token), origin=onc_origin_url(name))
+            _https_item(onc_download_url(name, token), origin=onc_origin_url(name), media_name=name)
             for name in names
         ]
 

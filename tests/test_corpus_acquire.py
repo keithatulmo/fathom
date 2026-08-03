@@ -128,6 +128,22 @@ def test_acquire_records_audio_duration(tmp_path: Path) -> None:
     assert result.manifest.objects[0].duration_s == pytest.approx(2.0)
 
 
+def test_media_name_drives_type_when_url_has_no_extension(tmp_path: Path) -> None:
+    import numpy as np
+    import soundfile as sf
+
+    # WAV content stored under a .bin name, mimicking a source that serves files behind a query
+    # parameter (ONC), so the URL carries no extension and the media name supplies the type.
+    blob = tmp_path / "opaque.bin"
+    sf.write(str(blob), np.zeros(1000, dtype="float32"), 1000, format="WAV", subtype="FLOAT")
+    store = LocalObjectStore(tmp_path / "store")
+    item = AcquisitionItem(origin_url="onc://file", url=blob.as_uri(), media_name="clip.wav")
+    result = acquire_batch(_source(), [item], store, tmp_path / "scratch")
+    record = result.manifest.objects[0]
+    assert record.media_type == "audio/wav"
+    assert record.duration_s == pytest.approx(1.0)
+
+
 def test_quarantined_dataset_is_not_acquired(tmp_path: Path) -> None:
     store = LocalObjectStore(tmp_path / "store")
     spec = _source(quarantined_dataset=True)

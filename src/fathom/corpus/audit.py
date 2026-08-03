@@ -48,9 +48,9 @@ def _aggregate(
             {
                 "source_id": source_id,
                 "objects": 0,
+                "objects_with_duration": 0,
                 "bytes": 0,
                 "hours": 0.0,
-                "hours_known": True,
                 "sites": set(),
                 "band_low": None,
                 "band_high": None,
@@ -62,10 +62,9 @@ def _aggregate(
         agg["objects"] += 1
         agg["bytes"] += int(obj["byte_count"])
         duration = obj.get("duration_s")
-        if duration is None:
-            agg["hours_known"] = False
-        else:
+        if duration is not None:
             agg["hours"] += float(duration) / 3600.0
+            agg["objects_with_duration"] += 1
         if obj.get("site"):
             agg["sites"].add(str(obj["site"]))
         low, high = obj.get("band_low_hz"), obj.get("band_high_hz")
@@ -164,8 +163,10 @@ def _source_row(agg: dict[str, Any], specs: dict[str, SourceSpec]) -> dict[str, 
         "family": spec.family if spec else None,
         "sites": agg["sites"],
         "objects": agg["objects"],
+        "objects_with_duration": agg["objects_with_duration"],
         "gigabytes": round(agg["bytes"] / 1e9, 4),
-        "hours": round(agg["hours"], 3) if agg["hours_known"] else None,
+        "hours": round(agg["hours"], 3),
+        "hours_partial": agg["objects_with_duration"] < agg["objects"],
         "band_low_hz": agg["band_low"],
         "band_high_hz": agg["band_high"],
         "band_partial": agg["band_partial"],
@@ -235,16 +236,24 @@ def _render_markdown(table: dict[str, Any], specs: dict[str, SourceSpec]) -> str
         "Tier1/2/3 | Train | Vessels |"
     )
     lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    any_partial = False
     for row in table["per_source"]:
         tiers = row["truth_tiers"]
         band = f"{row['band_low_hz']}-{row['band_high_hz']}"
-        hours = "n/a" if row["hours"] is None else f"{row['hours']}"
+        hours = f"{row['hours']}" + ("*" if row["hours_partial"] else "")
+        any_partial = any_partial or row["hours_partial"]
         vessels = "n/a" if row["registry_vessels"] is None else str(row["registry_vessels"])
         lines.append(
             f"| {row['source_id']} | {row['family']} | {', '.join(row['sites']) or '-'} | "
             f"{row['objects']} | {row['gigabytes']} | {hours} | {band} | {row['band_partial']} | "
             f"{row['license_class']} | {tiers[1]}/{tiers[2]}/{tiers[3]} | "
             f"{row['training_eligible']} | {vessels} |"
+        )
+    if any_partial:
+        lines.append("")
+        lines.append(
+            "\\* Hours are a partial sum: some objects carry no decodable duration (for example "
+            "AIS archives or non-audio products), so the true hours are at least the value shown."
         )
     lines.append("")
     lines.append("## Quiet-anchor candidate ranking")
