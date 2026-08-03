@@ -112,8 +112,8 @@ def _family_prior_bytes(ledger: object, family: int) -> int:
 
 def _cmd_acquire(args: argparse.Namespace, repo_root: Path) -> int:
     from .corpus.acquire import acquire_batch, plan_anon_s3_items
-    from .corpus.fetch import anon_s3_list
-    from .corpus.sources import AccessClass, family_cap_gb, source_by_id
+    from .corpus.planners import PlanningError, plan_items
+    from .corpus.sources import family_cap_gb, source_by_id
     from .ledger import Ledger
 
     spec = source_by_id(args.source_id)
@@ -123,23 +123,27 @@ def _cmd_acquire(args: argparse.Namespace, repo_root: Path) -> int:
 
     try:
         if args.key:
-            keys = list(args.key)
-        elif spec.access_class == AccessClass.ANON_S3 and spec.s3_bucket:
-            keys = anon_s3_list(
-                spec.s3_bucket,
-                args.prefix or "",
-                spec.s3_region or "us-east-1",
-                max_keys=args.limit,
-            )
+            # Explicit S3 keys for an anonymous-S3 source, bypassing the lister.
+            items = plan_anon_s3_items(spec, list(args.key))
         else:
-            raise SystemExit(
-                f"source {spec.source_id!r} needs explicit --key(s); only anon-S3 sources list"
-            )
-        if not keys:
-            print(f"no keys found for {spec.source_id} (prefix {args.prefix!r})")
+            try:
+                items = plan_items(
+                    spec,
+                    prefix=args.prefix or "",
+                    limit=args.limit,
+                    urls=args.url,
+                    index_url=args.index_url,
+                    ais_start=args.date_start,
+                    ais_end=args.date_end,
+                    onc_location=args.onc_location,
+                    onc_device_category=args.onc_device_category,
+                )
+            except PlanningError as exc:
+                raise SystemExit(str(exc)) from exc
+        if not items:
+            print(f"no objects found for {spec.source_id} with the given parameters")
             return 1
 
-        items = plan_anon_s3_items(spec, keys)
         cap_bytes = None if args.no_cap else int(family_cap_gb(spec.family) * 1e9)
         prior = 0 if args.no_cap else _family_prior_bytes(ledger, spec.family)
         result = acquire_batch(
@@ -188,19 +192,25 @@ def _cmd_corpus_audit(args: argparse.Namespace, repo_root: Path) -> int:
 
 def _cmd_corpus_probe(args: argparse.Namespace) -> int:
     from .corpus.fetch import anon_s3_list
+    from .corpus.gcs import gcs_list
     from .corpus.sources import AccessClass, source_by_id
 
     spec = source_by_id(args.source_id)
-    if spec.access_class != AccessClass.ANON_S3 or not spec.s3_bucket:
-        print(f"{spec.source_id} is not an anonymous-S3 source; nothing to probe unattended")
+    if spec.s3_bucket is None:
+        print(f"{spec.source_id} has no listable bucket; provide explicit --url objects to acquire")
         return 1
-    keys = anon_s3_list(
-        spec.s3_bucket, args.prefix or "", spec.s3_region or "us-east-1", max_keys=args.limit
-    )
-    print(
-        f"{spec.source_id}: s3://{spec.s3_bucket} reachable, {len(keys)} key(s) under prefix "
-        f"{args.prefix!r}:"
-    )
+    if spec.access_class == AccessClass.ANON_S3:
+        keys = anon_s3_list(
+            spec.s3_bucket, args.prefix or "", spec.s3_region or "us-east-1", max_keys=args.limit
+        )
+        origin = f"s3://{spec.s3_bucket}"
+    elif spec.access_class == AccessClass.GCS_HTTPS:
+        keys = gcs_list(spec.s3_bucket, args.prefix or "", max_keys=args.limit)
+        origin = f"gs://{spec.s3_bucket}"
+    else:
+        print(f"{spec.source_id} ({spec.access_class}) is not listable unattended")
+        return 1
+    print(f"{spec.source_id}: {origin} reachable, {len(keys)} key(s) under prefix {args.prefix!r}:")
     for key in keys:
         print(f"  {key}")
     return 0
@@ -221,9 +231,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     acquire = sub.add_parser("acquire", help="Acquire a source's objects into the object store.")
     acquire.add_argument("source_id", help="First-wave source identifier.")
-    acquire.add_argument("--key", action="append", help="Explicit object key; repeatable.")
-    acquire.add_argument("--prefix", default="", help="Key prefix to list (anon-S3 sources).")
-    acquire.add_argument("--limit", type=int, default=1, help="Max keys to list.")
+    acquire.add_argument("--key", action="append", help="Explicit S3 object key; repeatable.")
+    acquire.add_argument("--url", action="append", help="Explicit object URL; repeatable.")
+    acquire.add_argument("--prefix", default="", help="Key prefix to list (anon-S3 or GCS).")
+    acquire.add_argument("--limit", type=int, default=1, help="Max objects to list.")
+    acquire.add_argument("--index-url", help="OOI archive directory index URL to enumerate.")
+    acquire.add_argument("--date-start", help="Range start (YYYY-MM-DD) for AIS or ONC.")
+    acquire.add_argument("--date-end", help="Range end (YYYY-MM-DD) for AIS or ONC.")
+    acquire.add_argument("--onc-location", help="ONC location code.")
+    acquire.add_argument("--onc-device-category", help="ONC device category code.")
     acquire.add_argument("--r2", action="store_true", help="Destination is the R2 bucket (env).")
     acquire.add_argument("--local", help="Destination is a local directory (offline).")
     acquire.add_argument("--no-deep-verify", action="store_true", help="Skip re-hash verification.")

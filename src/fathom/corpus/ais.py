@@ -13,9 +13,34 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 _EARTH_RADIUS_M = 6_371_000.0
+_MARINECADASTRE_TEMPLATE = (
+    "https://chs.coast.noaa.gov/htdata/CMSP/AISDataHandler/"
+    "{year}/AIS_{year}_{month:02d}_{day:02d}.zip"
+)
+
+
+def marinecadastre_daily_urls(start: str, end: str) -> list[str]:
+    """Return the MarineCadastre daily AIS zip URLs for an inclusive date range.
+
+    Dates are ISO ``YYYY-MM-DD``. The caller filters to the dates overlapping the acoustic
+    recordings rather than pulling whole years, per WO-2 Section 3a, so this builds only the days
+    that matter. The URLs are the bulk htdata endpoint, not the interactive clip-and-ship page.
+    """
+    first = date.fromisoformat(start)
+    last = date.fromisoformat(end)
+    if last < first:
+        raise ValueError("end date precedes start date")
+    urls: list[str] = []
+    current = first
+    while current <= last:
+        urls.append(
+            _MARINECADASTRE_TEMPLATE.format(year=current.year, month=current.month, day=current.day)
+        )
+        current += timedelta(days=1)
+    return urls
 
 
 @dataclass(frozen=True)

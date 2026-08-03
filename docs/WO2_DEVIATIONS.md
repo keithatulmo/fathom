@@ -49,9 +49,12 @@ unreachable are recorded here rather than silently dropped.
 
 ## Access-friction findings (an SD1 criterion)
 
-8. **Ocean Networks Canada is deferred.** ONC requires a free account and an API token, which are
-   not provisioned, so the Strait of Georgia busy site is not in the wave; the busy-regime role is
-   carried by MBARI and SanctSound. Provisioning the token is the action that unblocks it.
+8. **Ocean Networks Canada is now unblocked.** ONC was initially deferred because it requires a free
+   account and an API token. The owner has since provisioned a token, so ONC is wired through its
+   Oceans 3.0 archive-file API and the Strait of Georgia busy site is available. The token is read
+   from `FATHOM_ONC_TOKEN` in the environment and appears only in the transient download URL; the
+   provenance URL recorded in the manifest and ledger is token-free. The token was validated live
+   against the ONC API (read-only) before this was recorded.
 
 9. **DeepShip and ShipsEar are quarantined and not acquired.** DeepShip carries no license and is
    email-to-author only; ShipsEar is research-only. Both are quarantined from training-designated

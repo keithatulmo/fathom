@@ -66,10 +66,10 @@ def test_gaps_flag_missing_vessel_truth_and_busy_site() -> None:
     assert "site diversity" in criteria  # no busy regime acquired
 
 
-def test_not_acquired_lists_deferred_and_quarantined() -> None:
+def test_not_acquired_lists_quarantined_datasets() -> None:
     report = build_audit_report([_object()], generated_at="2026-08-03T00:00:00+00:00")
     not_acquired = {entry["source_id"] for entry in report.table["not_acquired"]}
-    assert "onc_strait_of_georgia" in not_acquired
+    # DeepShip and ShipsEar are quarantined datasets and are never acquired.
     assert "deepship" in not_acquired
     assert "shipsear" in not_acquired
 
