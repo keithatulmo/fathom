@@ -25,6 +25,8 @@ from .ais import AISRecord, RecordingWindow, correlate, haversine_m, parse_marin
 SITE_COORDS: dict[str, tuple[float, float]] = {
     "mars_monterey_bay": (36.7128, -122.186),
     "stellwagen_sb01": (42.43668, -70.546655),
+    "monterey_mb01": (36.798, -121.976),
+    "channel_islands_ci01": (34.0438, -120.0811),
 }
 
 BBox = tuple[float, float, float, float]  # (lat_min, lat_max, lon_min, lon_max)
