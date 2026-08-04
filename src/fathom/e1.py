@@ -109,6 +109,74 @@ def ks_two_sample(a: npt.NDArray[np.float64], b: npt.NDArray[np.float64]) -> flo
     return float(np.max(np.abs(cdf_a - cdf_b)))
 
 
+def wasserstein_distance(a: npt.NDArray[np.float64], b: npt.NDArray[np.float64]) -> float:
+    """Return the one-dimensional Wasserstein distance between two response samples.
+
+    The Wasserstein (earth-mover) distance integrates the difference of the empirical distribution
+    functions across the whole support, so it registers tail-mass differences that the KS statistic,
+    a single supremum, misses. WO-4 requires the verdict to rest on a tail-sensitive measure because
+    the operating point lives in the low-miss tail; this is that measure, with KS reported alongside
+    for continuity.
+    """
+    from scipy.stats import wasserstein_distance as _wd
+
+    if a.shape[0] == 0 or b.shape[0] == 0:
+        return float("inf")
+    return float(_wd(a, b))
+
+
+def held_out_null_and_test(
+    surrogate: npt.NDArray[np.float64],
+    held_out: npt.NDArray[np.float64],
+    resamples: int,
+    seed: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return the held-out null and the surrogate-to-class test distances at matched sample sizes.
+
+    The null characterises the held-out class's own vessel-to-vessel spread: each resample splits
+    the held-out sample into two random halves and takes the Wasserstein distance between them. The
+    test replaces one half with an equal-size draw from the surrogate pool and takes the same
+    distance, so the null and the test compare samples of identical sizes and differ only in whether
+    the first half is real or surrogate. If the surrogate sits inside the class's spread they match.
+    """
+    n = held_out.shape[0]
+    if n < 2 or surrogate.shape[0] < 1:
+        raise ValueError("need at least two held-out values and one surrogate value")
+    first_half = (n + 1) // 2
+    generator = rng(seed)
+    null = np.empty(resamples, dtype=np.float64)
+    test = np.empty(resamples, dtype=np.float64)
+    for i in range(resamples):
+        order = generator.permutation(n)
+        half_a = held_out[order[:first_half]]
+        half_b = held_out[order[first_half:]]
+        surrogate_half = surrogate[generator.integers(0, surrogate.shape[0], size=first_half)]
+        null[i] = wasserstein_distance(half_a, half_b)
+        test[i] = wasserstein_distance(surrogate_half, half_b)
+    return null, test
+
+
+def null_verdict(
+    null: npt.NDArray[np.float64], test: npt.NDArray[np.float64], percentile: float = 95.0
+) -> dict[str, object]:
+    """Decide whether the surrogate-to-class distance falls inside the held-out null.
+
+    The tolerance is the given percentile of the null distribution, derived from the held-out class
+    rather than chosen; the surrogate passes when its representative (median) distance falls at or
+    below that tolerance, meaning the surrogate is no farther from the class than the class is from
+    itself.
+    """
+    tolerance = float(np.percentile(null, percentile))
+    test_median = float(np.median(test))
+    return {
+        "tolerance": tolerance,
+        "tolerance_percentile": percentile,
+        "test_median": test_median,
+        "null_median": float(np.median(null)),
+        "passed": bool(test_median <= tolerance),
+    }
+
+
 def realism_judgment(
     overlaps: list[bool], operating_indices: list[int], rejector_distance: float, tolerance: float
 ) -> dict[str, object]:

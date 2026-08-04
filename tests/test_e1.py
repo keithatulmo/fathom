@@ -6,14 +6,18 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from fathom.artifacts import E1Report
 from fathom.determinism import rng
 from fathom.e1 import (
     channel_responses,
+    held_out_null_and_test,
     intervals_overlap,
     ks_two_sample,
+    null_verdict,
     realism_judgment,
+    wasserstein_distance,
 )
 from fathom.manifest import Manifest
 from fathom.runner import Runner
@@ -30,6 +34,33 @@ def test_ks_two_sample_bounds() -> None:
     a = np.linspace(0.0, 1.0, 50)
     assert ks_two_sample(a, a) == 0.0
     assert ks_two_sample(a, a + 10.0) == 1.0
+
+
+def test_wasserstein_distance_is_tail_aware() -> None:
+    a = np.linspace(0.0, 1.0, 50)
+    assert wasserstein_distance(a, a) == 0.0
+    # A pure shift moves the whole distribution; Wasserstein equals the shift, where KS saturates.
+    assert wasserstein_distance(a, a + 5.0) == pytest.approx(5.0, abs=0.05)
+
+
+def test_null_verdict_passes_when_surrogate_matches_the_class() -> None:
+    generator = rng(7)
+    held_out = generator.normal(1.0, 0.3, size=13)
+    surrogate = generator.normal(1.0, 0.3, size=500)  # same distribution as the class
+    null, test = held_out_null_and_test(surrogate, held_out, resamples=300, seed=1)
+    verdict = null_verdict(null, test)
+    assert verdict["passed"] is True
+    assert float(verdict["test_median"]) <= float(verdict["tolerance"])  # type: ignore[arg-type]
+
+
+def test_null_verdict_fails_when_surrogate_is_shifted() -> None:
+    generator = rng(7)
+    held_out = generator.normal(1.0, 0.3, size=13)
+    surrogate = generator.normal(3.0, 0.3, size=500)  # materially different from the class
+    null, test = held_out_null_and_test(surrogate, held_out, resamples=300, seed=1)
+    verdict = null_verdict(null, test)
+    assert verdict["passed"] is False
+    assert float(verdict["test_median"]) > float(verdict["tolerance"])  # type: ignore[arg-type]
 
 
 def test_realism_judgment_passes_when_overlapping_and_close() -> None:

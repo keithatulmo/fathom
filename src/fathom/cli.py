@@ -20,6 +20,10 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import numpy as np
+import numpy.typing as npt
+
+from .hashing import sha256_hex
 from .manifest import Manifest
 from .runner import Runner
 
@@ -346,6 +350,201 @@ def _cmd_audio_lineage(args: argparse.Namespace, repo_root: Path) -> int:
         ledger.close()
     print(f"wrote audio-backing lineage for {len(rows)} vessels to {out_path}")
     return 0
+
+
+def _read_segment_1k(
+    blob: bytes, file_start_s: float, center_time_s: float, window_s: float, analysis_rate: float
+) -> npt.NDArray[np.float64] | None:
+    """Read a mono segment around a time, decimated to the analysis rate, or None if unavailable."""
+    import io
+
+    import soundfile as sf
+
+    from .corpus.decimate import decimate
+
+    with sf.SoundFile(io.BytesIO(blob)) as handle:
+        rate = float(handle.samplerate)
+        total = int(handle.frames)
+        start = max(0, int((center_time_s - file_start_s - window_s / 2.0) * rate))
+        count = min(int(window_s * rate), total - start)
+        if count <= 0:
+            return None
+        handle.seek(start)
+        data = handle.read(count, dtype="float64", always_2d=True)
+        mono = np.ascontiguousarray(data[:, 0], dtype=np.float64)
+    return np.asarray(decimate(mono[np.newaxis, :], rate, target_rate=analysis_rate).samples[0])
+
+
+def _gather_e1_segments(
+    args: argparse.Namespace, repo_root: Path, config: object
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[npt.NDArray[np.float64]]]:
+    """Download the cohort's backing objects from the store and extract 1 kHz segments."""
+    from .corpus.truth import recording_window
+    from .ledger import Ledger
+
+    analysis_rate = float(config.analysis_rate_hz)  # type: ignore[attr-defined]
+    window_s = args.window_seconds
+    store = _open_store(args)
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    try:
+        objects = {str(o["sha256"]): o for o in ledger.get_corpus_objects()}
+        splits = {str(s["vessel_id"]): str(s["split"]) for s in ledger.get_vessel_splits()}
+        # Best-SNR audio-backed quiet-tail presence per vessel, with its backing object and time.
+        best: dict[str, dict[str, object]] = {}
+        for p in ledger.get_vessel_presences():
+            if p.get("audio_quiet_tail") != 1:
+                continue
+            recording_sha = str(p["recording_sha"])
+            snr = p.get("audio_snr_db")
+            if recording_sha not in objects or snr is None or p.get("closest_time_s") is None:
+                continue
+            vessel = str(p["vessel_id"])
+            snr_value = float(snr)  # type: ignore[arg-type]
+            if vessel not in best or snr_value > float(best[vessel]["snr"]):  # type: ignore[arg-type]
+                best[vessel] = {
+                    "vessel_id": vessel,
+                    "split": splits.get(vessel, "?"),
+                    "object": recording_sha,
+                    "closest_time_s": float(p["closest_time_s"]),  # type: ignore[arg-type]
+                    "closest_range_m": float(p["closest_range_m"]),  # type: ignore[arg-type]
+                    "snr": snr_value,
+                }
+        # Group by backing object so each is downloaded once; extract per-vessel and background.
+        by_object: dict[str, list[dict[str, object]]] = {}
+        for rec in best.values():
+            if rec["split"] in ("train", "test"):
+                by_object.setdefault(str(rec["object"]), []).append(rec)
+
+        train_segments: list[dict[str, object]] = []
+        held_out_segments: list[dict[str, object]] = []
+        backgrounds: list[npt.NDArray[np.float64]] = []
+        for sha, recs in sorted(by_object.items()):
+            obj = objects[sha]
+            duration = float(obj["duration_s"])  # type: ignore[arg-type]
+            file_start, _ = recording_window(str(obj["origin_url"]), duration)  # type: ignore[misc]
+            blob = store.get_bytes(str(obj["raw_key"]))  # type: ignore[attr-defined]
+            for member in recs:
+                center = float(member["closest_time_s"])  # type: ignore[arg-type]
+                segment = _read_segment_1k(blob, file_start, center, window_s, analysis_rate)
+                if segment is None:
+                    continue
+                entry: dict[str, object] = {
+                    "vessel_id": member["vessel_id"],
+                    "split": member["split"],
+                    "samples": segment,
+                    "sample_rate": analysis_rate,
+                    "object": sha,
+                    "sample_rate_native": obj["sample_rate_hz"],
+                    "duration_s": duration,
+                    "closest_range_m": member["closest_range_m"],
+                }
+                target = train_segments if member["split"] == "train" else held_out_segments
+                target.append(entry)
+            # A background window far from the first vessel's closest approach.
+            offset = float(recs[0]["closest_time_s"]) - file_start  # type: ignore[arg-type]
+            bg_center = file_start + (300.0 if offset > duration / 2.0 else duration - 360.0)
+            bg = _read_segment_1k(blob, file_start, bg_center, window_s, analysis_rate)
+            if bg is not None:
+                backgrounds.append(bg)
+            has_bg = "yes" if bg is not None else "no"
+            print(f"  {sha[:12]} {obj['source_id']}: {len(recs)} vessel(s), bg={has_bg}")
+    finally:
+        ledger.close()
+    return train_segments, held_out_segments, backgrounds
+
+
+def _save_segments_cache(
+    path: Path,
+    train: list[dict[str, object]],
+    held: list[dict[str, object]],
+    backgrounds: list[npt.NDArray[np.float64]],
+) -> None:
+    """Cache extracted segments as an npz of arrays plus a JSON sidecar (no pickle)."""
+    arrays: dict[str, npt.NDArray[np.float64]] = {}
+    meta: dict[str, object] = {"train": [], "held": [], "n_backgrounds": len(backgrounds)}
+    for group, name in ((train, "train"), (held, "held")):
+        rows = []
+        for index, seg in enumerate(group):
+            arrays[f"{name}_{index}"] = np.asarray(seg["samples"], dtype=np.float64)
+            rows.append({k: v for k, v in seg.items() if k != "samples"})
+        meta[name] = rows
+    for index, bg in enumerate(backgrounds):
+        arrays[f"bg_{index}"] = np.asarray(bg, dtype=np.float64)
+    np.savez(str(path), **arrays)  # type: ignore[arg-type]
+    path.with_suffix(".json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def _load_segments_cache(
+    path: Path,
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[npt.NDArray[np.float64]]]:
+    """Load segments from the npz + JSON cache written by :func:`_save_segments_cache`."""
+    data = np.load(path)  # allow_pickle is False by default, so this is safe
+    meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    train = [{**m, "samples": data[f"train_{i}"]} for i, m in enumerate(meta["train"])]
+    held = [{**m, "samples": data[f"held_{i}"]} for i, m in enumerate(meta["held"])]
+    backgrounds = [data[f"bg_{i}"] for i in range(int(meta["n_backgrounds"]))]
+    return train, held, backgrounds
+
+
+def _cmd_e1_realdata(args: argparse.Namespace, repo_root: Path) -> int:
+    from .config import E1RealDataConfig
+    from .e1_realdata import run_e1_realdata
+
+    config = E1RealDataConfig()
+    cache_path = repo_root / ".fathom" / "e1_segments.npz"
+    if cache_path.exists() and not args.refresh:
+        train_segments, held_out_segments, backgrounds = _load_segments_cache(cache_path)
+        print(f"loaded cached segments from {cache_path}")
+    else:
+        train_segments, held_out_segments, backgrounds = _gather_e1_segments(
+            args, repo_root, config
+        )
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _save_segments_cache(cache_path, train_segments, held_out_segments, backgrounds)
+    print(
+        f"segments: {len(train_segments)} train, {len(held_out_segments)} held-out, "
+        f"{len(backgrounds)} backgrounds"
+    )
+
+    payload, distributions = run_e1_realdata(
+        train_segments, held_out_segments, backgrounds, config, args.seed
+    )
+    payload["held_out_vessels"] = sorted(
+        (
+            {
+                "vessel_id": e["vessel_id"],
+                "backing_object_sha256": e["object"],
+                "sample_rate_hz": e["sample_rate_native"],
+                "duration_s": e["duration_s"],
+                "closest_range_m": e["closest_range_m"],
+            }
+            for e in held_out_segments
+        ),
+        key=lambda r: str(r["vessel_id"]),
+    )
+    payload["fitted_distributions"] = distributions.to_dict()
+    payload["seed"] = args.seed
+
+    out_path = (repo_root / args.out).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    blob_text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    out_path.write_text(blob_text, encoding="utf-8")
+    artifact_hash = sha256_hex(blob_text.encode("utf-8"))
+    run_id = f"e1-realdata-{ledger_latest_tag(payload)}-{args.seed}"
+    verdict = payload["verdict"]
+    print(
+        f"\nE1 real-data verdict: {'PASS' if verdict['passed'] else 'FAIL'} "
+        f"({verdict['operating_rungs']} operating rungs of {verdict['rungs_total']}; realism holds "
+        "inside the held-out null across the operating band)"
+    )
+    print(f"lineage: {out_path}  sha256={artifact_hash}")
+    print(f"run id: {run_id}")
+    return 0 if verdict["passed"] else 4
+
+
+def ledger_latest_tag(payload: dict[str, object]) -> str:
+    """A short deterministic tag for the run id from the fitted train roster size."""
+    return f"train{payload.get('train_vessel_count')}-held{payload.get('held_out_vessel_count')}"
 
 
 def _cmd_capture_audio(args: argparse.Namespace, repo_root: Path) -> int:
@@ -752,6 +951,22 @@ def build_parser() -> argparse.ArgumentParser:
     fetchqt.add_argument("--local", help="Destination is a local directory (offline).")
     fetchqt.add_argument("--no-cap", action="store_true", help="Ignore the family volume cap.")
 
+    e1rd = sub.add_parser(
+        "e1-realdata", help="Run the E1 comparison against the real held-out class (closes SD2)."
+    )
+    e1rd.add_argument("--seed", type=int, default=20260804, help="Run seed.")
+    e1rd.add_argument(
+        "--window-seconds", type=float, default=120.0, help="Closest-approach segment length."
+    )
+    e1rd.add_argument(
+        "--out", default="docs/e1_realdata_lineage.json", help="Committed lineage path."
+    )
+    e1rd.add_argument("--r2", action="store_true", help="Read audio from the R2 bucket (env).")
+    e1rd.add_argument("--local", help="Read audio from a local directory.")
+    e1rd.add_argument(
+        "--refresh", action="store_true", help="Re-download and re-extract segments, skip cache."
+    )
+
     capaudio = sub.add_parser(
         "capture-audio", help="Measure and persist sample rate/duration from stored audio headers."
     )
@@ -835,6 +1050,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_acquire(args, repo_root)
     if args.command == "fetch-quiet-tail":
         return _cmd_fetch_quiet_tail(args, repo_root)
+    if args.command == "e1-realdata":
+        return _cmd_e1_realdata(args, repo_root)
     if args.command == "capture-audio":
         return _cmd_capture_audio(args, repo_root)
     if args.command == "audio-lineage":
