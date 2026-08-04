@@ -96,14 +96,18 @@ list, and only the bounded fetch remained.
     and CA3 only when it is audio-backed and audible, gates CA6 on a captured (not asserted) sample
     rate, and seeds the vessel-level split from the audio-backed cohort.
 
-11. **The measurement is physically consistent, and its threshold is provisional.** Across the
-    fetched passages the mean in-band SNR is about 8.5 dB within 1.5 km and about 3.7 dB beyond 3 km,
-    so the measure tracks range as a real signal should. At a provisional 6 dB audibility threshold
-    the audio-backed quiet-tail cohort is 28 distinct vessels, up from one; CA2's held-out and
-    train-side minimums are met with a disjoint split (held-out 13, train-side 14). CA3's count of
-    30 is met at 5.73 dB, which is 0.27 dB below the provisional cut, so whether CA3 closes turns on
-    the SNR threshold rather than on more corpus. Consistent with the note and the review, that
-    threshold is not set unilaterally: the full distribution is reported (39 vessels at 3 dB, 28 at
-    6 dB, 22 at 8 dB) and the bar is brought to the owner to ratify, with a bounded closest-passage
-    fetch available if a 6 dB close is preferred. No owner-certified value is introduced anywhere in
-    this work.
+11. **The measurement is physically consistent, and CA3 is held open by one vessel at a strict
+    6 dB.** Across the fetched passages the mean in-band SNR is about 8.5 dB within 1.5 km and about
+    3.7 dB beyond 3 km, so the measure tracks range as a real signal should. At a 6 dB audibility
+    threshold the audio-backed quiet-tail cohort is 29 distinct vessels, up from one; CA2's held-out
+    and train-side minimums are met with a disjoint split (held-out 13, train-side 14). CA3's count
+    of 30 is not met: the cohort is 29, and the thirtieth vessel sits at 5.82 dB, 0.18 dB below the
+    cut. Three closest-passage fetch passes (about 70 files, 40 GB of audio) moved the cohort from
+    25 to 28 to 29 and then plateaued, because the near-shore sites with abundant quiet-tail traffic
+    are busy: Florida Keys close passages within a kilometre added no audible vessels, their in-band
+    level sitting at the Straits' ambient floor, while the quiet sites carry few quiet-tail vessels.
+    So reaching 30 at a strict 6 dB is bounded by site ambient, not by fetching. The full
+    distribution is recorded (41 vessels at 3 dB, 29 at 6 dB, 22 at 8 dB). The owner elected to hold
+    the round 6 dB bar and record CA3 as narrowly unmet rather than ratify a lower threshold in the
+    5.7 to 6.2 dB cluster the cohort occupies; the SNR-threshold decision is carried into the
+    revised adequacy note. No owner-certified value is introduced anywhere in this work.
