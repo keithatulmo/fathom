@@ -1,0 +1,52 @@
+{
+  "name": "injection_fixtures",
+  "seed": 20260803,
+  "description": "Surrogate injection onto fixture background, with distributions fit from train-side vessels only, exercising injection lineage and byte-identical regeneration on synthetic fixtures.",
+  "nodes": [
+    {
+      "id": "fixtures",
+      "stage": "fixtures",
+      "inputs": {},
+      "config": {
+        "vessels_per_split": 2,
+        "recordings_per_present_vessel": 2,
+        "clutter_channels": 4,
+        "sites": 2,
+        "sample_rate": 2048.0,
+        "duration_s": 2.0,
+        "target_band_hz": [200.0, 300.0],
+        "target_tonal_hz": 250.0,
+        "target_amplitude": 1.0,
+        "noise_amplitude": 0.25,
+        "quarantined_vessels": 1,
+        "guard_hours": 24.0,
+        "calibration_target_events": 500
+      }
+    },
+    {
+      "id": "fit",
+      "stage": "surrogate_fit",
+      "inputs": {"registry": "fixtures:registry"},
+      "config": {}
+    },
+    {
+      "id": "inject",
+      "stage": "surrogate_injection",
+      "inputs": {"background": "fixtures:audio", "distributions": "fit:distributions"},
+      "config": {
+        "band_low_hz": 4.0,
+        "band_high_hz": 300.0,
+        "snr_db": 3.0,
+        "bearing0_deg": 90.0,
+        "closest_proxy": 1.0,
+        "speed_proxy": 0.5,
+        "doppler_peak": 0.02,
+        "t_cpa_fraction": 0.5,
+        "absorption_coeff": 0.001,
+        "multipath_depth": 0.3,
+        "multipath_spacing_hz": 90.0,
+        "spreading_exponent": 1.0
+      }
+    }
+  ]
+}

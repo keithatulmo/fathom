@@ -115,6 +115,75 @@ class ScoringConfig(_Frozen):
     owner_certified: OwnerCertifiedFigures = OwnerCertifiedFigures()
 
 
+class FitConfig(_Frozen):
+    """Configuration of the surrogate parameter-fitting stage.
+
+    The fitting reads the registry, selects the train split, and derives the surrogate distributions
+    from train-side vessels only, refusing any other split by construction (SD3 Section 5.4). It
+    carries the owner-certified figures, which remain unset.
+    """
+
+    owner_certified: OwnerCertifiedFigures = OwnerCertifiedFigures()
+
+
+class InjectionConfig(_Frozen):
+    """Configuration of the surrogate-injection stage.
+
+    The injected level is stated only as a signal-to-noise ratio relative to the measured in-band
+    background; there is no absolute-level field, per SD2 Section 2. The band is the in-band window
+    the ratio is measured over; the kinematic and propagation fields are dimensionless proxies that
+    place a moving target and condition its propagation, and the owner-certified figures are carried
+    and remain unset.
+    """
+
+    band_low_hz: float = 4.0
+    band_high_hz: float = 150.0
+    snr_db: float = 0.0
+    bearing0_deg: float = 90.0
+    closest_proxy: float = 1.0
+    speed_proxy: float = 0.5
+    doppler_peak: float = 0.02
+    t_cpa_fraction: float = 0.5
+    absorption_coeff: float = 0.001
+    multipath_depth: float = 0.3
+    multipath_spacing_hz: float = 90.0
+    spreading_exponent: float = 1.0
+    owner_certified: OwnerCertifiedFigures = OwnerCertifiedFigures()
+
+
+class E1Config(_Frozen):
+    """Configuration of the E1 realism harness.
+
+    The surrogate is swept across the signal-to-noise ladder and processed, with a placeholder
+    held-out class, through the same reference front end and detector; the realism criterion is met
+    when the detectability intervals overlap across the operating band and the rejector two-sample
+    distance is below tolerance. The injection kinematic and propagation fields are dimensionless
+    proxies, the ladder and band are signal-to-noise relative, and the owner-certified figures are
+    carried and remain unset. There is no absolute-level field.
+    """
+
+    snr_ladder_db: tuple[float, ...] = (-9.0, -6.0, -3.0, 0.0, 3.0, 6.0)
+    band_low_hz: float = 4.0
+    band_high_hz: float = 300.0
+    nfft: int = 256
+    hop: int = 128
+    energy_scale: float = 3.0
+    threshold: float = 0.5
+    rejector_tolerance: float = 0.35
+    bootstrap_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES
+    bootstrap_alpha: float = DEFAULT_ALPHA
+    bearing0_deg: float = 90.0
+    closest_proxy: float = 1.0
+    speed_proxy: float = 0.5
+    doppler_peak: float = 0.02
+    t_cpa_fraction: float = 0.5
+    absorption_coeff: float = 0.001
+    multipath_depth: float = 0.3
+    multipath_spacing_hz: float = 90.0
+    spreading_exponent: float = 1.0
+    owner_certified: OwnerCertifiedFigures = OwnerCertifiedFigures()
+
+
 class AuditConfig(_Frozen):
     """Configuration of the split-integrity audit.
 

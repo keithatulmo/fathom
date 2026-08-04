@@ -1,0 +1,55 @@
+{
+  "name": "e1_fixtures",
+  "seed": 20260803,
+  "report_node": null,
+  "description": "The E1 realism harness on synthetic fixtures: surrogate distributions fit from train-side vessels only, injected across a signal-to-noise ladder onto background, compared through the reference front end and detector against a placeholder held-out class, proving the comparison machinery before the real held-out class arrives (WO-3 AC4).",
+  "nodes": [
+    {
+      "id": "fixtures",
+      "stage": "fixtures",
+      "inputs": {},
+      "config": {
+        "vessels_per_split": 3,
+        "recordings_per_present_vessel": 2,
+        "clutter_channels": 24,
+        "sites": 2,
+        "sample_rate": 2048.0,
+        "duration_s": 2.0,
+        "target_band_hz": [200.0, 300.0],
+        "target_tonal_hz": 250.0,
+        "target_amplitude": 1.0,
+        "noise_amplitude": 0.25,
+        "quarantined_vessels": 1,
+        "guard_hours": 24.0,
+        "calibration_target_events": 500
+      }
+    },
+    {
+      "id": "fit",
+      "stage": "surrogate_fit",
+      "inputs": {"registry": "fixtures:registry"},
+      "config": {}
+    },
+    {
+      "id": "e1",
+      "stage": "e1",
+      "inputs": {
+        "audio": "fixtures:audio",
+        "truth": "fixtures:truth",
+        "distributions": "fit:distributions"
+      },
+      "config": {
+        "snr_ladder_db": [-9.0, -6.0, -3.0, 0.0, 3.0, 6.0],
+        "band_low_hz": 4.0,
+        "band_high_hz": 300.0,
+        "nfft": 256,
+        "hop": 128,
+        "energy_scale": 3.0,
+        "threshold": 0.5,
+        "rejector_tolerance": 0.35,
+        "bootstrap_resamples": 1000,
+        "bootstrap_alpha": 0.05
+      }
+    }
+  ]
+}

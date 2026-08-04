@@ -222,6 +222,67 @@ class SplitAudit:
 
 
 @dataclass(frozen=True)
+class SurrogateDist:
+    """Fitted surrogate line-statistic distributions derived from train-side vessels only.
+
+    The payload is the serialised :class:`fathom.surrogate.fit.SurrogateDistributions`, carrying the
+    first-principles structural ranges, the train-side quiet fraction, and the train roster, so the
+    train-side-only derivation of SD3 Section 5.4 is auditable from the artifact itself.
+    """
+
+    KIND: ClassVar[str] = "surrogate_dist"
+
+    payload: dict[str, Any]
+
+    def to_blob(self) -> bytes:
+        return encode_bundle({"payload": self.payload}, {})
+
+    @classmethod
+    def from_blob(cls, blob: bytes) -> SurrogateDist:
+        meta, _ = decode_bundle(blob)
+        return cls(payload=dict(meta["payload"]))
+
+
+@dataclass(frozen=True)
+class SurrogateParams:
+    """The per-channel surrogate injection record: every parameter and seed, for regeneration.
+
+    Each record names the injected channel, its drawn machinery, kinematic, and propagation
+    parameters, the seed, the requested signal-to-noise ratio, and the achieved ratio re-measured
+    after injection. No absolute level appears; the level is stated only as a signal-to-noise ratio.
+    """
+
+    KIND: ClassVar[str] = "surrogate_params"
+
+    records: tuple[dict[str, Any], ...]
+
+    def to_blob(self) -> bytes:
+        return encode_bundle({"records": [dict(r) for r in self.records]}, {})
+
+    @classmethod
+    def from_blob(cls, blob: bytes) -> SurrogateParams:
+        meta, _ = decode_bundle(blob)
+        return cls(records=tuple(dict(r) for r in meta["records"]))
+
+
+@dataclass(frozen=True)
+class E1Report:
+    """The E1 realism report: the two response distributions, their comparison, and the verdict."""
+
+    KIND: ClassVar[str] = "e1_report"
+
+    payload: dict[str, Any]
+
+    def to_blob(self) -> bytes:
+        return encode_bundle({"payload": self.payload}, {})
+
+    @classmethod
+    def from_blob(cls, blob: bytes) -> E1Report:
+        meta, _ = decode_bundle(blob)
+        return cls(payload=dict(meta["payload"]))
+
+
+@dataclass(frozen=True)
 class Report:
     """The assembled scored report of the acceptance path."""
 

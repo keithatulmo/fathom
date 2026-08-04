@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from . import audit, detection, dsp, fixtures, scoring  # noqa: F401  (registration side effects)
+from . import (  # noqa: F401  (registration side effects)
+    audit,
+    detection,
+    dsp,
+    e1,
+    fixtures,
+    scoring,
+    surrogate_fit,
+    surrogate_injection,
+)
 from .base import Stage, get_stage, register, registered_stages
 
 __all__ = ["Stage", "get_stage", "register", "registered_stages"]
