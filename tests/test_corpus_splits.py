@@ -31,6 +31,20 @@ def test_insufficient_quiet_tail_fails_ca2() -> None:
     assert audit["meets_ca3"] is False  # 20 < 30 quiet-tail
 
 
+def test_surplus_quiet_tail_spreads_beyond_minimums() -> None:
+    registry = {f"V{i}" for i in range(120)}
+    quiet = {f"V{i}" for i in range(60)}  # 12 + 12 minimums, then 36 surplus to spread
+    _, audit = assign_splits(registry, quiet, "run1")
+    qc = audit["quiet_tail_counts"]
+    # Surplus quiet-tail spreads across all three splits, so held-out and train-side exceed the
+    # bare minimum instead of the surplus all landing in calibration.
+    assert qc["test"] > 12
+    assert qc["train"] > 12
+    assert qc["calibration"] > 0
+    assert qc["test"] + qc["train"] + qc["calibration"] == 60
+    assert audit["meets_ca2"] is True
+
+
 def test_assignment_is_deterministic() -> None:
     registry = {f"V{i}" for i in range(40)}
     quiet = {f"V{i}" for i in range(26)}

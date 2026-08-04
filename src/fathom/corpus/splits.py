@@ -33,8 +33,9 @@ def assign_splits(
     """Assign vessels to splits and return the rows and the split-integrity audit.
 
     Quiet-tail vessels are ordered by identity hash and the first held-out and train-side quotas go
-    to test and train so the CA2 minimums are met; the remainder seed calibration. General vessels
-    are spread evenly across the three splits. Every vessel receives exactly one split.
+    to test and train so the CA2 minimums are met; any remaining quiet-tail spread evenly across the
+    three splits, favouring held-out and train-side over calibration. General vessels are spread
+    evenly across the three splits. Every vessel receives exactly one split.
     """
     quiet = sorted(quiet_tail_vessels & registry_vessels, key=_order_key)
     general = sorted(registry_vessels - quiet_tail_vessels, key=_order_key)
@@ -46,7 +47,11 @@ def assign_splits(
         elif index < QUIET_HELDOUT_MIN + QUIET_TRAINSIDE_MIN:
             split = "train"
         else:
-            split = "calibration"
+            # Quiet-tail beyond the held-out and train-side minimums spreads evenly rather than
+            # piling into calibration: these scarce close-slow-isolated passages are the surrogate-
+            # validation resource (SD2, E1), so a larger held-out set is worth more here than extra
+            # calibration vessels, which the abundant general registry already supplies.
+            split = _SPLITS[index % 3]
         assignments[vessel] = (split, True)
     for index, vessel in enumerate(general):
         assignments[vessel] = (_SPLITS[index % 3], False)

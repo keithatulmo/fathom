@@ -27,6 +27,12 @@ SITE_COORDS: dict[str, tuple[float, float]] = {
     "stellwagen_sb01": (42.43668, -70.546655),
     "monterey_mb01": (36.798, -121.976),
     "channel_islands_ci01": (34.0438, -120.0811),
+    # Second-wave near-shore sites, added to widen the AIS-verified vessel population for the
+    # association/class calibration axis. Coordinates come from each deployment's metadata JSON.
+    "stellwagen_sb03": (42.25539, -70.178843),
+    "channel_islands_ci05": (34.0178, -119.3172),
+    "florida_keys_fk01": (24.43313, -81.93068),
+    "grays_reef_gr01": (31.396417, -80.8904),
 }
 
 BBox = tuple[float, float, float, float]  # (lat_min, lat_max, lon_min, lon_max)
