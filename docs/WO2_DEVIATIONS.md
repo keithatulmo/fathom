@@ -71,3 +71,39 @@ unreachable are recorded here rather than silently dropped.
   single SanctSound or DCLDE annotation object would be smaller, and the owner can say which.
 - The R2 endpoint's exact form (account-scoped Cloudflare endpoint versus a custom domain) is taken
   from `FATHOM_R2_ENDPOINT` as provided; the tooling does not assume a particular endpoint shape.
+
+## Addendum: audio-backed quiet-tail cohort (response to the corpus-growth review, 2026-08-04)
+
+The corpus-growth review (Fathom_reviews/Fathom_corpus_growth_review_v0.1) found the review's
+intended failure mode: the quiet-tail cohort had grown in AIS correlations against un-downloaded
+windows, so a vessel counted as quiet-tail from its kinematics alone with no audio behind it. Of the
+87 kinematically flagged quiet-tail vessels, exactly one had decodable audio. The factual question
+the ledger could not answer was settled directly against the R2 bucket: it held exactly the 3,006
+ledgered non-SanctSound objects (MBARI, ADEON, ONC, AIS) and no SanctSound audio, so the near-shore
+audio had been enumerated but never fetched. The window pre-correlation was therefore a targeting
+list, and only the bounded fetch remained.
+
+10. **The quiet-tail cohort is now audio-backed and SNR-verified.** A `fetch-quiet-tail` driver
+    downloads the audio for the flagged passages, greedily by distinct-vessel coverage or, with
+    `--prioritize closest`, by closest approach first, since audibility falls off with range. Each
+    fetched object records its sample rate and decoded duration, which is what CA6 needs. A new
+    `snr.py` measures in-band (4-150 Hz) signal-to-noise at each passage's closest approach: it
+    decodes a short window at closest approach and a spread of reference windows for the ambient
+    floor (a low percentile, the quiet baseline), never the whole multi-hour file, and reports the
+    ratio in decibels. `corpus-truth --audio-only` correlates the fetched objects and writes
+    audio-backed vessel presence carrying the measured SNR and an `audio_quiet_tail` flag, added to
+    the presence table by migration. The adequacy scorer now counts a quiet-tail vessel toward CA2
+    and CA3 only when it is audio-backed and audible, gates CA6 on a captured (not asserted) sample
+    rate, and seeds the vessel-level split from the audio-backed cohort.
+
+11. **The measurement is physically consistent, and its threshold is provisional.** Across the
+    fetched passages the mean in-band SNR is about 8.5 dB within 1.5 km and about 3.7 dB beyond 3 km,
+    so the measure tracks range as a real signal should. At a provisional 6 dB audibility threshold
+    the audio-backed quiet-tail cohort is 28 distinct vessels, up from one; CA2's held-out and
+    train-side minimums are met with a disjoint split (held-out 13, train-side 14). CA3's count of
+    30 is met at 5.73 dB, which is 0.27 dB below the provisional cut, so whether CA3 closes turns on
+    the SNR threshold rather than on more corpus. Consistent with the note and the review, that
+    threshold is not set unilaterally: the full distribution is reported (39 vessels at 3 dB, 28 at
+    6 dB, 22 at 8 dB) and the bar is brought to the owner to ratify, with a bounded closest-passage
+    fetch available if a 6 dB close is preferred. No owner-certified value is introduced anywhere in
+    this work.

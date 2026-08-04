@@ -103,15 +103,20 @@ def score_adequacy(
     registry = {p["vessel_id"] for p in presences if int(p["registry_grade"]) == 1}
     per_site: dict[str, set[str]] = defaultdict(set)
     close_vessels: set[str] = set()
-    quiet_tail_vessels: set[str] = set()
+    kinematic_quiet_vessels: set[str] = set()
+    audio_quiet_vessels: set[str] = set()
     for p in presences:
         if int(p["registry_grade"]) != 1:
             continue
         per_site[str(p["site"])].add(str(p["vessel_id"]))
         if p["closest_range_m"] is not None and float(p["closest_range_m"]) <= CLOSE_PASSAGE_M:
             close_vessels.add(str(p["vessel_id"]))
+        # The kinematic flag names candidates from AIS alone; a vessel counts toward the binding
+        # cohort only once its closest-approach passage is present and audible in the working band.
         if p.get("quiet_tail") == 1:
-            quiet_tail_vessels.add(str(p["vessel_id"]))
+            kinematic_quiet_vessels.add(str(p["vessel_id"]))
+        if p.get("audio_quiet_tail") == 1:
+            audio_quiet_vessels.add(str(p["vessel_id"]))
 
     # Sites come from acquired audio objects and from correlated presences, so window-only
     # near-shore sites (whose audio is not downloaded) still count toward site diversity.
@@ -132,17 +137,31 @@ def score_adequacy(
     for source_id, rate in (window_source_rates or {}).items():
         if rate / 2.0 >= WORKING_BAND_HZ[1]:
             band_sources.add(source_id)
+    # Sources that carry decodable audio (an object with a duration), and which of those never had a
+    # sample rate recorded, so CA6 reports where band coverage is asserted rather than captured.
+    audio_sources = {str(o["source_id"]) for o in objects if o.get("duration_s") is not None}
+    audio_sources_no_rate = {
+        s
+        for s in audio_sources
+        if not any(str(o["source_id"]) == s and o["sample_rate_hz"] is not None for o in objects)
+    }
     eval_tiers: dict[int, int] = defaultdict(int)
     for o in objects:
         eval_tiers[_tier(str(o["truth_condition"]))] += 1
 
     criteria = (
         _ca1(biologic_objects, len(presences), len(registry), len(per_site)),
-        _ca2(len(registry), len(quiet_tail_vessels), len(close_vessels), split_audit),
-        _ca3(len(registry), len(quiet_tail_vessels), split_audit),
+        _ca2(
+            len(registry),
+            len(audio_quiet_vessels),
+            len(kinematic_quiet_vessels),
+            len(close_vessels),
+            split_audit,
+        ),
+        _ca3(len(registry), len(audio_quiet_vessels), len(kinematic_quiet_vessels), split_audit),
         _ca4(len(registry)),
         _ca5(sites, regimes_present),
-        _ca6(band_sources),
+        _ca6(band_sources, audio_sources_no_rate),
         _ca7(len(registry), eval_tiers),
     )
 
@@ -155,13 +174,15 @@ def score_adequacy(
         "blocking_failures": list(blocking),
         "measured": {
             "distinct_registry_vessels_total": len(registry),
-            "distinct_quiet_tail_vessels": len(quiet_tail_vessels),
+            "distinct_audio_backed_quiet_tail_vessels": len(audio_quiet_vessels),
+            "distinct_kinematic_quiet_tail_candidates": len(kinematic_quiet_vessels),
             "registry_vessels_by_site": {s: len(v) for s, v in per_site.items()},
             "close_passage_vessels_within_5km": len(close_vessels),
             "sites": sites,
             "regimes_present": sorted(regimes_present),
             "biologic_objects": biologic_objects,
             "band_known_sources": sorted(band_sources),
+            "audio_sources_missing_sample_rate": sorted(audio_sources_no_rate),
         },
     }
     return AdequacyReport(
@@ -190,12 +211,16 @@ def _ca1(biologics: int, transits: int, ship_vessels: int, correlated_sites: int
 
 
 def _ca2(
-    registry_total: int, quiet_tail: int, close: int, split_audit: dict[str, Any] | None
+    registry_total: int,
+    audio_quiet: int,
+    kinematic_quiet: int,
+    close: int,
+    split_audit: dict[str, Any] | None,
 ) -> CriterionScore:
     need = QUIET_HELDOUT_MIN + QUIET_TRAINSIDE_MIN
     if split_audit is not None and split_audit["meets_ca2"]:
         verdict = PASS
-    elif quiet_tail >= need:
+    elif audio_quiet >= need:
         # The count is met, but held-out and train-side are not yet split disjointly.
         verdict = MARGINAL
     else:
@@ -208,22 +233,27 @@ def _ca2(
     return CriterionScore(
         id="CA2",
         consumer="Quiet-tail proxy vessels for surrogate validation (SD2, E1)",
-        measured=f"{quiet_tail} quiet-tail vessels (close, slow, isolated); {close} close-only "
+        measured=f"{audio_quiet} audio-backed quiet-tail vessels (close/slow/isolated AND audible "
+        f"in-band at closest approach); {kinematic_quiet} kinematic candidates; {close} close-only "
         f"proxy; {registry_total} registry-grade total{split_note}",
-        threshold=f">={QUIET_HELDOUT_MIN} held-out and >={QUIET_TRAINSIDE_MIN} train-side disjoint",
+        threshold=f">={QUIET_HELDOUT_MIN} held-out and >={QUIET_TRAINSIDE_MIN} train-side "
+        "disjoint, each audio-backed",
         binding="binding",
         verdict=verdict,
-        directive=f"Grow the quiet-tail cohort to >={need} disjoint vessels (have {quiet_tail}) by "
-        "correlating more low-traffic passages, then assign the held-out and train-side split.",
+        directive=f"Grow the audio-backed quiet-tail cohort to >={need} disjoint vessels (have "
+        f"{audio_quiet}) by fetching more flagged low-traffic passages, then assign the split.",
     )
 
 
 def _ca3(
-    registry_total: int, quiet_tail: int, split_audit: dict[str, Any] | None
+    registry_total: int,
+    audio_quiet: int,
+    kinematic_quiet: int,
+    split_audit: dict[str, Any] | None,
 ) -> CriterionScore:
     if split_audit is not None and split_audit["meets_ca3"]:
         verdict = PASS
-    elif registry_total < VESSELS_TOTAL_MIN or quiet_tail < QUIET_TAIL_TOTAL_MIN:
+    elif registry_total < VESSELS_TOTAL_MIN or audio_quiet < QUIET_TAIL_TOTAL_MIN:
         verdict = FAIL
     else:
         # Both counts met; disjoint split assignment and its proof are still pending.
@@ -236,13 +266,15 @@ def _ca3(
     return CriterionScore(
         id="CA3",
         consumer="Vessel-level splits (SD3)",
-        measured=f"{registry_total} distinct vessels total (need {VESSELS_TOTAL_MIN}); quiet-tail "
-        f"{quiet_tail} (need {QUIET_TAIL_TOTAL_MIN}); {split_state}",
-        threshold=f">={VESSELS_TOTAL_MIN} vessels total, >={QUIET_TAIL_TOTAL_MIN} quiet-tail total",
+        measured=f"{registry_total} distinct vessels total (need {VESSELS_TOTAL_MIN}); "
+        f"audio-backed quiet-tail {audio_quiet} of {kinematic_quiet} kinematic "
+        f"(need {QUIET_TAIL_TOTAL_MIN}); {split_state}",
+        threshold=f">={VESSELS_TOTAL_MIN} vessels total, >={QUIET_TAIL_TOTAL_MIN} audio-backed "
+        "quiet-tail total",
         binding="binding on the quiet subset",
         verdict=verdict,
-        directive="Grow the general cohort toward 50 and the quiet-tail cohort toward 30, then "
-        "assign pairwise-disjoint vessel-level splits and emit the disjointness proof.",
+        directive="Grow the general cohort toward 50 and the audio-backed quiet-tail cohort toward "
+        "30, then assign pairwise-disjoint vessel-level splits and emit the disjointness proof.",
     )
 
 
@@ -278,7 +310,7 @@ def _ca5(sites: list[str], regimes_present: set[str]) -> CriterionScore:
     )
 
 
-def _ca6(band_sources: set[str]) -> CriterionScore:
+def _ca6(band_sources: set[str], audio_sources_no_rate: set[str]) -> CriterionScore:
     covers_proof = "mbari_pacific_sound_2khz" in band_sources
     # The working band is covered at the proof site and at least one other (near-shore) site where
     # the quiet-tail surrogate data lives; sources whose rate is unrecorded are a recorded partial.
@@ -288,17 +320,22 @@ def _ca6(band_sources: set[str]) -> CriterionScore:
         verdict = MARGINAL
     else:
         verdict = FAIL
+    missing = (
+        f"; audio sources with no captured sample rate: {sorted(audio_sources_no_rate)}"
+        if audio_sources_no_rate
+        else "; every audio source has its sample rate captured"
+    )
     return CriterionScore(
         id="CA6",
         consumer="In-band content for the front end (SD4, E2)",
-        measured=f"working band {WORKING_BAND_HZ[0]}-{WORKING_BAND_HZ[1]} Hz confirmed for "
-        f"{sorted(band_sources)} via sample rate; other sources' rate not recorded",
+        measured=f"working band {WORKING_BAND_HZ[0]}-{WORKING_BAND_HZ[1]} Hz confirmed via "
+        f"captured rate for {sorted(band_sources)}{missing}",
         threshold=f"working band covered at the quiet and proof sites ({WORKING_BAND_HZ[0]}-"
-        f"{WORKING_BAND_HZ[1]} Hz)",
+        f"{WORKING_BAND_HZ[1]} Hz), sample rate captured at acquisition",
         binding="binding if absent",
         verdict=verdict,
-        directive="Record each object's sample rate at acquisition (or via decimation) so "
-        "band coverage is quantified at the quiet site, not only the proof site.",
+        directive="Record each object's sample rate at acquisition (now captured for the fetched "
+        "quiet-tail audio); backfill the remaining audio sources so no coverage is asserted.",
     )
 
 

@@ -206,6 +206,9 @@ _MIGRATIONS: dict[str, tuple[tuple[str, str], ...]] = {
         ("isolation", "INTEGER"),
         ("quiet_tail", "INTEGER"),
         ("corr_run", "TEXT"),
+        ("closest_time_s", "REAL"),  # epoch seconds of closest approach, for the audio offset
+        ("audio_snr_db", "REAL"),  # measured in-band SNR at closest approach, NULL if not measured
+        ("audio_quiet_tail", "INTEGER"),  # 1 when quiet-tail AND audible in-band audio backs it
     ),
 }
 
@@ -409,6 +412,9 @@ class Ledger:
             "isolation": None,
             "quiet_tail": None,
             "corr_run": None,
+            "closest_time_s": None,
+            "audio_snr_db": None,
+            "audio_quiet_tail": None,
             **record,
             "created_at": _now_iso(),
         }
@@ -416,10 +422,12 @@ class Ledger:
             "INSERT OR IGNORE INTO corpus_vessel_presence "
             "(presence_id, corr_run, recording_sha, site, vessel_id, mmsi, imo, name, "
             " first_seen_s, last_seen_s, closest_range_m, registry_grade, truth_tier, min_sog, "
-            " isolation, quiet_tail, ais_source_sha, created_at) "
+            " isolation, quiet_tail, closest_time_s, audio_snr_db, audio_quiet_tail, "
+            " ais_source_sha, created_at) "
             "VALUES (:presence_id, :corr_run, :recording_sha, :site, :vessel_id, :mmsi, :imo, "
             " :name, :first_seen_s, :last_seen_s, :closest_range_m, :registry_grade, :truth_tier, "
-            " :min_sog, :isolation, :quiet_tail, :ais_source_sha, :created_at)",
+            " :min_sog, :isolation, :quiet_tail, :closest_time_s, :audio_snr_db, "
+            " :audio_quiet_tail, :ais_source_sha, :created_at)",
             row,
         )
         self._conn.commit()
@@ -459,6 +467,14 @@ class Ledger:
     def quiet_tail_vessel_counts_by_source(self) -> dict[str, int]:
         """Return the count of distinct quiet-tail vessels per source in the latest run."""
         return self._distinct_vessel_counts("p.quiet_tail = 1")
+
+    def audio_quiet_tail_vessel_counts_by_source(self) -> dict[str, int]:
+        """Return distinct audio-backed quiet-tail vessels per source in the latest run.
+
+        These are the quiet-tail vessels whose closest-approach passage is present as audio and
+        audible in the working band, the cohort CA2 and CA3 actually require.
+        """
+        return self._distinct_vessel_counts("p.audio_quiet_tail = 1")
 
     def registry_vessel_counts_by_source(self) -> dict[str, int]:
         """Return the count of distinct registry-grade vessels correlated to each acoustic source.

@@ -46,6 +46,11 @@ _AIS_DATE = re.compile(r"AIS_(\d{4})_(\d{2})_(\d{2})")
 QUIET_TAIL_RANGE_M = 5000.0
 QUIET_TAIL_SOG_KN = 5.0
 QUIET_TAIL_ISOLATION_MAX = 3
+# A kinematic quiet-tail passage counts toward the audio-backed cohort only when its closest
+# approach is audible in the working band: the in-band power at closest approach must exceed the
+# ambient floor by at least this many decibels. Provisional, in the spirit of the adequacy note; the
+# real value firms up once the fetched passages are measured.
+QUIET_TAIL_SNR_DB_MIN = 6.0
 # Isolation is masking at the moment of closest approach: how many other vessels are within
 # acoustic range in a short window around it. A distant vessel or one present at another time does
 # not mask the passage, so isolation is measured here rather than over the whole time in the box.
@@ -180,6 +185,7 @@ def correlate_recording(
                 "first_seen_s": presence.first_seen_s,
                 "last_seen_s": presence.last_seen_s,
                 "closest_range_m": presence.closest_range_m,
+                "closest_time_s": presence.closest_time_s,
                 "registry_grade": int(presence.registry_grade),
                 "truth_tier": presence.truth_tier,
                 "min_sog": presence.min_sog,

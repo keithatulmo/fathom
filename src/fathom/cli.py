@@ -171,6 +171,124 @@ def _cmd_acquire(args: argparse.Namespace, repo_root: Path) -> int:
     return 0
 
 
+def _cmd_fetch_quiet_tail(args: argparse.Namespace, repo_root: Path) -> int:
+    from .corpus.acquire import AcquisitionItem, acquire_batch
+    from .corpus.quiet_tail import (
+        QuietTailFile,
+        covered_vessels,
+        select_files,
+        select_files_by_closeness,
+    )
+    from .corpus.sources import FIRST_WAVE, family_cap_gb, source_by_id
+    from .ledger import Ledger
+
+    store = _open_store(args)
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    scratch = repo_root / ".fathom" / "scratch"
+    try:
+        objects = ledger.get_corpus_objects()
+        object_shas = {str(o["sha256"]) for o in objects}
+        presences = ledger.get_vessel_presences()
+        # Optionally exclude vessels already audio-backed, so a top-up fetch pursues new ones.
+        audible = (
+            {str(p["vessel_id"]) for p in presences if p.get("audio_quiet_tail") == 1}
+            if args.exclude_audible
+            else set()
+        )
+        # Window-only quiet-tail passages: flagged quiet, but the recording is a registered window
+        # rather than a downloaded object, so the vessel has no audio behind it yet. Track the
+        # closest-approach range so files with near (audible) passages can be prioritised.
+        vessels_by_recording: dict[str, set[str]] = {}
+        range_by_recording: dict[str, float] = {}
+        for p in presences:
+            if p.get("quiet_tail") != 1:
+                continue
+            rec = str(p["recording_sha"])
+            vid = str(p["vessel_id"])
+            if rec in object_shas or vid in audible:
+                continue
+            vessels_by_recording.setdefault(rec, set()).add(vid)
+            rng = float(p["closest_range_m"])  # type: ignore[arg-type]
+            range_by_recording[rec] = min(range_by_recording.get(rec, rng), rng)
+
+        # Resolve each window's origin URL, source, site, and rate so a file can be fetched.
+        candidates: list[QuietTailFile] = []
+        for spec in FIRST_WAVE:
+            for win in ledger.get_recording_windows(spec.source_id):
+                wid = str(win["window_id"])
+                if wid not in vessels_by_recording:
+                    continue
+                candidates.append(
+                    QuietTailFile(
+                        source_id=spec.source_id,
+                        origin_url=str(win["origin_url"]),
+                        site=str(win["site"]),
+                        sample_rate_hz=(
+                            None
+                            if win["sample_rate_hz"] is None
+                            else float(win["sample_rate_hz"])  # type: ignore[arg-type]
+                        ),
+                        vessels=frozenset(vessels_by_recording[wid]),
+                        min_range_m=range_by_recording[wid],
+                    )
+                )
+
+        if args.prioritize == "closest":
+            chosen = select_files_by_closeness(
+                candidates, args.target_vessels, max_files=args.max_files
+            )
+        else:
+            chosen = select_files(candidates, args.target_vessels, max_files=args.max_files)
+        print(
+            f"selected {len(chosen)} file(s) covering {len(covered_vessels(chosen))} distinct "
+            f"quiet-tail vessels (target {args.target_vessels}, by {args.prioritize}) from "
+            f"{len(candidates)} candidates"
+        )
+        if not chosen:
+            return 1
+
+        by_source: dict[str, list[QuietTailFile]] = {}
+        for f in chosen:
+            by_source.setdefault(f.source_id, []).append(f)
+
+        total_uploaded = 0
+        total_bytes = 0
+        for source_id, files in sorted(by_source.items()):
+            spec = source_by_id(source_id)
+            items = [
+                AcquisitionItem(
+                    origin_url=f.origin_url,
+                    url=f.origin_url,
+                    site=f.site,
+                    sample_rate_hz=f.sample_rate_hz,
+                )
+                for f in files
+            ]
+            cap_bytes = None if args.no_cap else int(family_cap_gb(spec.family) * 1e9)
+            prior = 0 if args.no_cap else _family_prior_bytes(ledger, spec.family)
+            result = acquire_batch(
+                spec,
+                items,
+                store,  # type: ignore[arg-type]
+                scratch,
+                ledger=ledger,
+                cap_bytes=cap_bytes,
+                prior_bytes=prior,
+            )
+            total_uploaded += result.uploaded
+            total_bytes += result.bytes_stored
+            note = "  CAP REACHED" if result.cap_reached else ""
+            print(
+                f"  {source_id}: uploaded {result.uploaded}, "
+                f"skipped {result.skipped_existing}, {result.bytes_stored:,} bytes{note}"
+            )
+    finally:
+        ledger.close()
+    print(f"fetched {total_uploaded} quiet-tail recording(s), {total_bytes / 1e9:.2f} GB stored")
+    print("next: re-run corpus-truth to correlate the fetched audio into audio-backed presences")
+    return 0
+
+
 def _cmd_corpus_audit(args: argparse.Namespace, repo_root: Path) -> int:
     from .corpus.audit import build_audit_report
     from .ledger import Ledger
@@ -280,7 +398,9 @@ def _cmd_assign_splits(args: argparse.Namespace, repo_root: Path) -> int:
     try:
         presences = ledger.get_vessel_presences()
         registry = {str(p["vessel_id"]) for p in presences if p["registry_grade"] == 1}
-        quiet = {str(p["vessel_id"]) for p in presences if p.get("quiet_tail") == 1}
+        # The quiet-tail split seeds from the audio-backed cohort: only vessels whose closest
+        # approach is present and audible in-band validate the surrogate (SD2, E1).
+        quiet = {str(p["vessel_id"]) for p in presences if p.get("audio_quiet_tail") == 1}
         assign_run = f"assign-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(2)}"
         rows, audit = assign_splits(registry, quiet, assign_run)
         for row in rows:
@@ -304,8 +424,12 @@ def _cmd_assign_splits(args: argparse.Namespace, repo_root: Path) -> int:
 
 
 def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
+    import math
+
     from .corpus.ais import AISRecord
+    from .corpus.snr import measure_inband_snr
     from .corpus.truth import (
+        QUIET_TAIL_SNR_DB_MIN,
         SITE_COORDS,
         ais_date_key,
         bbox_for,
@@ -332,9 +456,12 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
     ledger = Ledger(repo_root / ".fathom" / "ledger.db")
     try:
         objects = ledger.get_corpus_objects()
-        # Recordings to correlate come from real acquired objects and from registered windows
-        # (audio not downloaded), unified as (recording_id, origin_url, start, end).
-        recordings: list[tuple[str, str, float, float]] = []
+        # Recordings to correlate come from real acquired objects (audio present, so its raw key is
+        # carried for the SNR measurement) and from registered windows (audio not downloaded). A
+        # window whose audio has since been fetched is superseded by its object and is not
+        # correlated again as an audio-less recording.
+        recordings: list[tuple[str, str, float, float, str | None]] = []
+        object_origins: set[str] = set()
         for obj in objects:
             if obj["source_id"] != args.source or obj["site"] != args.site:
                 continue
@@ -344,20 +471,27 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
                 None if duration is None else float(duration),  # type: ignore[arg-type]
             )
             if window is not None:
-                recordings.append((str(obj["sha256"]), str(obj["origin_url"]), *window))
-        for win in ledger.get_recording_windows(args.source):
-            if win["site"] == args.site:
+                object_origins.add(str(obj["origin_url"]))
+                recordings.append(
+                    (str(obj["sha256"]), str(obj["origin_url"]), *window, str(obj["raw_key"]))
+                )
+        # In audio-only mode only the downloaded objects are correlated, to measure SNR and add
+        # audio-backed presences to an existing run without re-parsing every window's AIS day.
+        windows = [] if args.audio_only else ledger.get_recording_windows(args.source)
+        for win in windows:
+            if win["site"] == args.site and str(win["origin_url"]) not in object_origins:
                 recordings.append(
                     (
                         str(win["window_id"]),
                         str(win["origin_url"]),
                         float(win["start_epoch_s"]),  # type: ignore[arg-type]
                         float(win["end_epoch_s"]),  # type: ignore[arg-type]
+                        None,
                     )
                 )
 
         # Load only the AIS days these recordings need, filtered to the site's bounding box.
-        needed = {recording_date_key(origin) for _, origin, _, _ in recordings} - {None}
+        needed = {recording_date_key(origin) for _, origin, _, _, _ in recordings} - {None}
         ais_by_date: dict[str, tuple[list[AISRecord], str]] = {}
         for obj in objects:
             if obj["source_id"] != args.ais_source:
@@ -370,7 +504,8 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
             print(f"  loaded AIS {key}: {len(ais_by_date[key][0])} records within box")
 
         recorded = 0
-        for recording_id, origin_url, start_s, end_s in recordings:
+        snr_measured = 0
+        for recording_id, origin_url, start_s, end_s, raw_key in recordings:
             key = recording_date_key(origin_url)
             if key is None or key not in ais_by_date:
                 continue
@@ -387,19 +522,39 @@ def _cmd_corpus_truth(args: argparse.Namespace, repo_root: Path) -> int:
                 ais_records=ais_records,
                 ais_source_sha=ais_sha,
             )
+            # For a recording whose audio is present, measure the in-band SNR at each quiet-tail
+            # passage's closest approach: the vessel counts as audio-backed quiet-tail only when it
+            # is audible, not merely kinematically slow and close. The blob is fetched once per
+            # recording and only when a quiet-tail passage is present.
+            if raw_key is not None and any(row["quiet_tail"] for row in rows):
+                blob = store.get_bytes(raw_key)  # type: ignore[attr-defined]
+                for row in rows:
+                    if not row["quiet_tail"] or row["closest_time_s"] is None:
+                        continue
+                    offset_s = float(row["closest_time_s"]) - start_s  # type: ignore[arg-type]
+                    result = measure_inband_snr(blob, offset_s)
+                    audible = (
+                        math.isfinite(result.snr_db) and result.snr_db >= QUIET_TAIL_SNR_DB_MIN
+                    )
+                    row["audio_snr_db"] = None if math.isnan(result.snr_db) else result.snr_db
+                    row["audio_quiet_tail"] = int(audible)
+                    snr_measured += 1
             for row in rows:
                 ledger.insert_vessel_presence(record=row)
             recorded += len(rows)
 
         counts = ledger.registry_vessel_counts_by_source()
         quiet = ledger.quiet_tail_vessel_counts_by_source()
+        audio_quiet = ledger.audio_quiet_tail_vessel_counts_by_source()
     finally:
         ledger.close()
 
     print(f"correlation run {corr_run}")
     print(f"  correlated {recorded} vessel-presence rows for {args.source} at {args.site}")
+    print(f"  measured in-band SNR for {snr_measured} quiet-tail passage(s)")
     print(f"  distinct registry-grade vessels by source: {counts}")
     print(f"  distinct quiet-tail vessels by source: {quiet}")
+    print(f"  distinct AUDIO-BACKED quiet-tail vessels by source: {audio_quiet}")
     return 0
 
 
@@ -459,6 +614,31 @@ def build_parser() -> argparse.ArgumentParser:
     acquire.add_argument("--no-deep-verify", action="store_true", help="Skip re-hash verification.")
     acquire.add_argument("--no-cap", action="store_true", help="Ignore the family volume cap.")
 
+    fetchqt = sub.add_parser(
+        "fetch-quiet-tail",
+        help="Download audio for the kinematically-flagged quiet-tail passages (bounded set).",
+    )
+    fetchqt.add_argument(
+        "--target-vessels", type=int, default=60, help="Distinct quiet-tail vessels to cover."
+    )
+    fetchqt.add_argument(
+        "--max-files", type=int, default=80, help="File-count budget for the fetch."
+    )
+    fetchqt.add_argument(
+        "--prioritize",
+        choices=("count", "closest"),
+        default="count",
+        help="Select files by distinct-vessel count (default) or by closest passage first.",
+    )
+    fetchqt.add_argument(
+        "--exclude-audible",
+        action="store_true",
+        help="Skip vessels already audio-backed, so a top-up fetch pursues new ones.",
+    )
+    fetchqt.add_argument("--r2", action="store_true", help="Destination is the R2 bucket (env).")
+    fetchqt.add_argument("--local", help="Destination is a local directory (offline).")
+    fetchqt.add_argument("--no-cap", action="store_true", help="Ignore the family volume cap.")
+
     audit = sub.add_parser("corpus-audit", help="Generate the SD1 corpus audit report.")
     audit.add_argument("--r2", action="store_true", help="(reserved) publish to R2.")
     audit.add_argument("--local", help="(reserved) publish to a local directory.")
@@ -489,6 +669,11 @@ def build_parser() -> argparse.ArgumentParser:
     truth.add_argument("--site", default="mars_monterey_bay", help="Site key with known coords.")
     truth.add_argument("--radius-km", type=float, default=20.0, help="Correlation radius (km).")
     truth.add_argument("--corr-run", help="Shared correlation run id, to span sites in one pass.")
+    truth.add_argument(
+        "--audio-only",
+        action="store_true",
+        help="Correlate only downloaded audio objects (measure SNR), not registered windows.",
+    )
     truth.add_argument("--r2", action="store_true", help="Read AIS from the R2 bucket (env).")
     truth.add_argument("--local", help="Read AIS from a local directory.")
 
@@ -513,6 +698,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_demo()
     if args.command == "acquire":
         return _cmd_acquire(args, repo_root)
+    if args.command == "fetch-quiet-tail":
+        return _cmd_fetch_quiet_tail(args, repo_root)
     if args.command == "corpus-audit":
         return _cmd_corpus_audit(args, repo_root)
     if args.command == "corpus-adequacy":
