@@ -23,6 +23,7 @@ _APPEND_ONLY_TABLES = (
     "corpus_sources",
     "corpus_objects",
     "corpus_derivatives",
+    "corpus_object_audio",
     "corpus_recording_windows",
     "corpus_vessel_presence",
     "corpus_vessel_splits",
@@ -153,6 +154,14 @@ CREATE TABLE IF NOT EXISTS corpus_derivatives (
     band_low_hz      REAL,
     band_high_hz     REAL,
     created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS corpus_object_audio (
+    sha256         TEXT PRIMARY KEY REFERENCES corpus_objects(sha256),
+    sample_rate_hz REAL,               -- measured from the stored audio header, not asserted
+    duration_s     REAL,
+    channels       INTEGER,
+    measured_at    TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS corpus_recording_windows (
@@ -351,6 +360,39 @@ class Ledger:
         cursor = self._conn.execute("SELECT * FROM corpus_objects ORDER BY source_id, sha256")
         columns = [description[0] for description in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+
+    def insert_object_audio(
+        self,
+        *,
+        sha256: str,
+        sample_rate_hz: float | None,
+        duration_s: float | None,
+        channels: int | None,
+    ) -> None:
+        """Record audio header facts measured from a stored object's bytes; idempotent by sha."""
+        self._conn.execute(
+            "INSERT OR IGNORE INTO corpus_object_audio "
+            "(sha256, sample_rate_hz, duration_s, channels, measured_at) VALUES (?, ?, ?, ?, ?)",
+            (sha256, sample_rate_hz, duration_s, channels, _now_iso()),
+        )
+        self._conn.commit()
+
+    def measured_band_source_rates(self) -> dict[str, float]:
+        """Return each source's greatest measured audio sample rate, from stored-object headers.
+
+        This lets the front-end band criterion (CA6) rest on rates read from the audio that is
+        actually present, rather than on rates asserted for windows whose audio was never fetched.
+        """
+        rows = self._conn.execute(
+            "SELECT o.source_id, MAX(a.sample_rate_hz) FROM corpus_object_audio a "
+            "JOIN corpus_objects o ON o.sha256 = a.sha256 "
+            "WHERE a.sample_rate_hz IS NOT NULL GROUP BY o.source_id"
+        ).fetchall()
+        return {str(row[0]): float(row[1]) for row in rows if row[1] is not None}
+
+    def count_object_audio(self) -> int:
+        """Return the number of objects with a measured audio header."""
+        return int(self._conn.execute("SELECT COUNT(*) FROM corpus_object_audio").fetchone()[0])
 
     def insert_corpus_derivative(self, *, record: dict[str, object]) -> None:
         """Record a derived corpus object with its parent and the operation that produced it."""

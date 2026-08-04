@@ -13,6 +13,31 @@ testable apart from the fetch itself.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+
+
+def audio_backed_vessels(
+    presences: list[dict[str, Any]],
+    audio_object_shas: set[str],
+    snr_threshold_db: float,
+) -> set[str]:
+    """Distinct vessels whose quiet-tail passage is backed by stored audio above the SNR bar.
+
+    Derived only from persisted state: the passage must be flagged quiet-tail, its recording must be
+    a stored audio object (its sha is in ``audio_object_shas``), and its persisted in-band SNR must
+    meet ``snr_threshold_db``. A count built this way regenerates from the ledger and cannot include
+    a vessel whose audio was never fetched, so both the scorer and the split use it.
+    """
+    out: set[str] = set()
+    for presence in presences:
+        if presence.get("quiet_tail") != 1:
+            continue
+        if str(presence["recording_sha"]) not in audio_object_shas:
+            continue
+        snr = presence.get("audio_snr_db")
+        if snr is not None and float(snr) >= snr_threshold_db:
+            out.add(str(presence["vessel_id"]))
+    return out
 
 
 @dataclass(frozen=True)

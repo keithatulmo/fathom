@@ -111,3 +111,35 @@ list, and only the bounded fetch remained.
     the round 6 dB bar and record CA3 as narrowly unmet rather than ratify a lower threshold in the
     5.7 to 6.2 dB cluster the cohort occupies; the SNR-threshold decision is carried into the
     revised adequacy note. No owner-certified value is introduced anywhere in this work.
+
+## Addendum: auditable-by-construction audio backing (response to the second review, 2026-08-04)
+
+The second corpus review recomputed the audit from a ledger that predated the audio-backing runs
+and, seeing no SanctSound audio and no `audio_quiet_tail` column, read the cohort as one. The
+audio-backing was in fact fully persisted in the working ledger, verified with a raw query that
+bypasses the schema migration: the columns exist, seventy SanctSound audio objects and one hundred
+ten in-band SNR values are stored, and twenty-nine distinct vessels are audio-backed and join to a
+stored object. But that ledger is gitignored local state and the audio lives in R2, neither visible
+to the review, so from the outside the count was unauditable. The review's structural lesson holds
+regardless of which ledger it read, and it is adopted.
+
+12. **The scorer counts only persisted, object-joined state.** It no longer trusts a stored flag: a
+    quiet-tail vessel counts toward CA2 and CA3 only when its recording joins a stored audio object
+    that carries a recorded sample rate and duration and its persisted in-band SNR meets the bar,
+    which is now a scoring parameter (`corpus-adequacy --snr-db`). The split assignment uses the
+    same derivation (`audio_backed_vessels`), so the split and the audit agree and neither can
+    credit a vessel whose audio was never fetched. Made to read only persisted state, the count
+    regenerates from the ledger by construction.
+
+13. **CA6 rests on measured audio, and the cohort is exported as committed lineage.** A
+    `capture-audio` command reads sample rate, duration, and channels from each stored audio header
+    that lacked a rate at acquisition (ADEON at 16 kHz, ONC at 64 kHz) and persists them in an
+    append-only side table, so CA6 confirms the working band from the audio actually present rather
+    than from window metadata for audio that is absent; every audio source now has a captured rate.
+    An `audio-lineage` command writes the cohort to `docs/audio_backing_lineage.json`, tying each
+    vessel to the object sha that backs it, its rate and duration, its closest-approach range, and
+    its measured SNR, so the count is auditable from the committed repository without the live
+    ledger or R2. `scripts/reproduce_audio_backing.sh` documents the fetch-measure-persist sequence
+    so the audio-backed ledger regenerates from the base corpus and R2. The audited count is
+    twenty-nine at the 6 dB bar, unchanged; CA2 passes on evidence, CA3 remains one vessel short,
+    and the count-versus-bar question is the owner's, as the review notes.

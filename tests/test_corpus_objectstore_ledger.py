@@ -88,6 +88,22 @@ def test_corpus_object_is_append_only(tmp_path: Path) -> None:
         ledger.close()
 
 
+def test_object_audio_capture_and_band_rates(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "ledger.db")
+    try:
+        sha = "c" * 64
+        ledger.insert_corpus_object(batch_id="b1", record=_record(sha))
+        ledger.insert_object_audio(sha256=sha, sample_rate_hz=64000.0, duration_s=300.0, channels=1)
+        # Idempotent by sha.
+        ledger.insert_object_audio(sha256=sha, sample_rate_hz=64000.0, duration_s=300.0, channels=1)
+        assert ledger.count_object_audio() == 1
+        assert ledger.measured_band_source_rates() == {"mbari_pacific_sound_2khz": 64000.0}
+        with pytest.raises(sqlite3.Error):
+            ledger._conn.execute("UPDATE corpus_object_audio SET sample_rate_hz = 1")
+    finally:
+        ledger.close()
+
+
 def test_corpus_derivative_insert(tmp_path: Path) -> None:
     ledger = Ledger(tmp_path / "ledger.db")
     try:

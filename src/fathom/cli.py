@@ -289,6 +289,106 @@ def _cmd_fetch_quiet_tail(args: argparse.Namespace, repo_root: Path) -> int:
     return 0
 
 
+def _cmd_audio_lineage(args: argparse.Namespace, repo_root: Path) -> int:
+    from .ledger import Ledger
+
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    try:
+        objects = {str(o["sha256"]): o for o in ledger.get_corpus_objects()}
+        audio_shas = {
+            sha
+            for sha, o in objects.items()
+            if o["duration_s"] is not None and o["sample_rate_hz"] is not None
+        }
+        splits = {str(s["vessel_id"]): str(s["split"]) for s in ledger.get_vessel_splits()}
+        best: dict[str, dict[str, object]] = {}
+        best_snr: dict[str, float] = {}
+        for p in ledger.get_vessel_presences():
+            if p.get("quiet_tail") != 1:
+                continue
+            rec = str(p["recording_sha"])
+            raw_snr = p.get("audio_snr_db")
+            if rec not in audio_shas or raw_snr is None:
+                continue
+            snr = round(float(raw_snr), 3)  # type: ignore[arg-type]
+            if snr < args.snr_db:
+                continue
+            vessel = str(p["vessel_id"])
+            if vessel not in best_snr or snr > best_snr[vessel]:
+                best_snr[vessel] = snr
+                o = objects[rec]
+                best[vessel] = {
+                    "vessel_id": vessel,
+                    "name": p.get("name"),
+                    "backing_object_sha256": rec,
+                    "source_id": o["source_id"],
+                    "site": p.get("site"),
+                    "sample_rate_hz": o["sample_rate_hz"],
+                    "duration_s": o["duration_s"],
+                    "closest_range_m": p.get("closest_range_m"),
+                    "audio_snr_db": snr,
+                    "corr_run": p.get("corr_run"),
+                    "split": splits.get(vessel),
+                }
+        rows = sorted(
+            best.values(), key=lambda r: (-best_snr[str(r["vessel_id"])], str(r["vessel_id"]))
+        )
+        doc = {
+            "snr_threshold_db": args.snr_db,
+            "audio_backed_quiet_tail_vessels": len(rows),
+            "note": "Each vessel's audio-backed quiet-tail passage: the stored object that backs "
+            "it, its sample rate and duration, and the measured in-band SNR. Regenerate with "
+            "`fathom audio-lineage`; the object shas resolve against the R2 store.",
+            "vessels": rows,
+        }
+        out_path = (repo_root / args.out).resolve()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    finally:
+        ledger.close()
+    print(f"wrote audio-backing lineage for {len(rows)} vessels to {out_path}")
+    return 0
+
+
+def _cmd_capture_audio(args: argparse.Namespace, repo_root: Path) -> int:
+    import io
+
+    import soundfile as sf
+
+    from .ledger import Ledger
+
+    store = _open_store(args)
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    recorded = 0
+    failed = 0
+    try:
+        for obj in ledger.get_corpus_objects():
+            media = obj.get("media_type")
+            if not (isinstance(media, str) and media.startswith("audio/")):
+                continue
+            # Only measure objects whose sample rate was not captured at acquisition (ADEON, ONC);
+            # the rest already carry a recorded rate on the object row.
+            if obj.get("sample_rate_hz") is not None:
+                continue
+            try:
+                info = sf.info(io.BytesIO(store.get_bytes(str(obj["raw_key"]))))  # type: ignore[attr-defined]
+            except Exception:
+                failed += 1
+                continue
+            ledger.insert_object_audio(
+                sha256=str(obj["sha256"]),
+                sample_rate_hz=float(info.samplerate),
+                duration_s=float(info.duration),
+                channels=int(info.channels),
+            )
+            recorded += 1
+        total = ledger.count_object_audio()
+    finally:
+        ledger.close()
+    print(f"measured audio headers for {recorded} object(s), {failed} undecodable (total {total})")
+    return 0
+
+
 def _cmd_corpus_audit(args: argparse.Namespace, repo_root: Path) -> int:
     from .corpus.audit import build_audit_report
     from .ledger import Ledger
@@ -322,11 +422,17 @@ def _cmd_corpus_adequacy(args: argparse.Namespace, repo_root: Path) -> int:
         presences = ledger.get_vessel_presences()
         splits = ledger.get_vessel_splits()
         window_rates = ledger.get_window_source_rates()
+        measured_rates = ledger.measured_band_source_rates()
     finally:
         ledger.close()
 
     report = score_adequacy(
-        objects, presences, splits=splits or None, window_source_rates=window_rates or None
+        objects,
+        presences,
+        splits=splits or None,
+        window_source_rates=window_rates or None,
+        measured_source_rates=measured_rates or None,
+        snr_threshold_db=args.snr_db,
     )
     out_dir = repo_root / ".fathom" / "corpus"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -391,16 +497,25 @@ def _cmd_register_windows(args: argparse.Namespace, repo_root: Path) -> int:
 
 
 def _cmd_assign_splits(args: argparse.Namespace, repo_root: Path) -> int:
+    from .corpus.quiet_tail import audio_backed_vessels
     from .corpus.splits import assign_splits
+    from .corpus.truth import QUIET_TAIL_SNR_DB_MIN
     from .ledger import Ledger
 
     ledger = Ledger(repo_root / ".fathom" / "ledger.db")
     try:
+        objects = ledger.get_corpus_objects()
+        audio_shas = {
+            str(o["sha256"])
+            for o in objects
+            if o["duration_s"] is not None and o["sample_rate_hz"] is not None
+        }
         presences = ledger.get_vessel_presences()
         registry = {str(p["vessel_id"]) for p in presences if p["registry_grade"] == 1}
-        # The quiet-tail split seeds from the audio-backed cohort: only vessels whose closest
-        # approach is present and audible in-band validate the surrogate (SD2, E1).
-        quiet = {str(p["vessel_id"]) for p in presences if p.get("audio_quiet_tail") == 1}
+        # The quiet-tail split seeds from the audio-backed cohort, derived from persisted state:
+        # only vessels whose closest approach is a stored audio object audible in-band validate the
+        # surrogate (SD2, E1). Same derivation the scorer uses, so the split and audit agree.
+        quiet = audio_backed_vessels(presences, audio_shas, QUIET_TAIL_SNR_DB_MIN)
         assign_run = f"assign-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(2)}"
         rows, audit = assign_splits(registry, quiet, assign_run)
         for row in rows:
@@ -639,12 +754,34 @@ def build_parser() -> argparse.ArgumentParser:
     fetchqt.add_argument("--local", help="Destination is a local directory (offline).")
     fetchqt.add_argument("--no-cap", action="store_true", help="Ignore the family volume cap.")
 
+    capaudio = sub.add_parser(
+        "capture-audio", help="Measure and persist sample rate/duration from stored audio headers."
+    )
+    capaudio.add_argument("--r2", action="store_true", help="Read audio from the R2 bucket (env).")
+    capaudio.add_argument("--local", help="Read audio from a local directory.")
+
+    lineage = sub.add_parser(
+        "audio-lineage", help="Export the audio-backed quiet-tail cohort's lineage as JSON."
+    )
+    lineage.add_argument(
+        "--snr-db", type=float, default=6.0, help="Audibility bar (in-band SNR dB)."
+    )
+    lineage.add_argument(
+        "--out", default="docs/audio_backing_lineage.json", help="Output path (repo-relative)."
+    )
+
     audit = sub.add_parser("corpus-audit", help="Generate the SD1 corpus audit report.")
     audit.add_argument("--r2", action="store_true", help="(reserved) publish to R2.")
     audit.add_argument("--local", help="(reserved) publish to a local directory.")
 
-    sub.add_parser(
+    adequacy = sub.add_parser(
         "corpus-adequacy", help="Score the corpus against the CA1-CA7 adequacy criteria."
+    )
+    adequacy.add_argument(
+        "--snr-db",
+        type=float,
+        default=6.0,
+        help="Audibility bar (in-band SNR dB) an audio-backed quiet-tail vessel must clear.",
     )
 
     sub.add_parser("assign-splits", help="Assign vessels to train/calibration/test splits (SD3).")
@@ -700,6 +837,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_acquire(args, repo_root)
     if args.command == "fetch-quiet-tail":
         return _cmd_fetch_quiet_tail(args, repo_root)
+    if args.command == "capture-audio":
+        return _cmd_capture_audio(args, repo_root)
+    if args.command == "audio-lineage":
+        return _cmd_audio_lineage(args, repo_root)
     if args.command == "corpus-audit":
         return _cmd_corpus_audit(args, repo_root)
     if args.command == "corpus-adequacy":

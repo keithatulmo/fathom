@@ -20,8 +20,10 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from .quiet_tail import audio_backed_vessels
 from .sources import FIRST_WAVE
 from .splits import build_split_audit
+from .truth import QUIET_TAIL_SNR_DB_MIN
 
 # Proposed pass thresholds from the adequacy note (Section 4). Provisional engineering defaults.
 QUIET_HELDOUT_MIN = 12
@@ -30,6 +32,9 @@ VESSELS_TOTAL_MIN = 50
 QUIET_TAIL_TOTAL_MIN = 30
 CALIBRATION_EVENTS_MIN = 500
 SITES_MIN = 3
+# The audibility bar an audio-backed quiet-tail passage must clear, in decibels of in-band SNR at
+# closest approach. Shared with the correlator so the flag and the scorer's derivation agree.
+SNR_THRESHOLD_DB = QUIET_TAIL_SNR_DB_MIN
 WORKING_BAND_HZ = (4.0, 150.0)
 REQUIRED_REGIMES = ("quiet", "nominal", "busy")
 
@@ -91,20 +96,36 @@ def score_adequacy(
     *,
     splits: list[dict[str, Any]] | None = None,
     window_source_rates: dict[str, float] | None = None,
+    measured_source_rates: dict[str, float] | None = None,
+    snr_threshold_db: float = SNR_THRESHOLD_DB,
     generated_at: str | None = None,
 ) -> AdequacyReport:
-    """Score the corpus against CA1-CA7 from objects, presences, and split assignment."""
+    """Score the corpus against CA1-CA7 from objects, presences, and split assignment.
+
+    Audio-backing is derived here from persisted primitives, not from a stored flag: a quiet-tail
+    vessel counts toward the binding cohort only when its passage joins to a stored audio object
+    carrying a recorded sample rate and duration and its persisted in-band SNR meets
+    ``snr_threshold_db``. So the count regenerates from the ledger and cannot be credited without a
+    stored object and measurement behind it.
+    """
     generated = generated_at or datetime.now(UTC).isoformat()
     family = {spec.source_id: spec.family for spec in FIRST_WAVE}
     split_audit = build_split_audit(splits) if splits else None
 
+    # Stored audio objects with a recorded sample rate and duration: the only recordings that can
+    # back an audio-backed vessel, so the audibility test rests on objects actually present.
+    audio_object_shas = {
+        str(o["sha256"])
+        for o in objects
+        if o.get("duration_s") is not None and o.get("sample_rate_hz") is not None
+    }
+
     # Distinct registry-grade (AIS-verified tier-one) vessels, total and per site, plus the
-    # kinematically classified quiet-tail cohort and the coarser close-passage proxy.
+    # kinematically classified quiet-tail candidates and the audio-backed cohort derived above.
     registry = {p["vessel_id"] for p in presences if int(p["registry_grade"]) == 1}
     per_site: dict[str, set[str]] = defaultdict(set)
     close_vessels: set[str] = set()
     kinematic_quiet_vessels: set[str] = set()
-    audio_quiet_vessels: set[str] = set()
     for p in presences:
         if int(p["registry_grade"]) != 1:
             continue
@@ -112,11 +133,10 @@ def score_adequacy(
         if p["closest_range_m"] is not None and float(p["closest_range_m"]) <= CLOSE_PASSAGE_M:
             close_vessels.add(str(p["vessel_id"]))
         # The kinematic flag names candidates from AIS alone; a vessel counts toward the binding
-        # cohort only once its closest-approach passage is present and audible in the working band.
+        # cohort only when a stored audio object backs the passage and its SNR clears the bar.
         if p.get("quiet_tail") == 1:
             kinematic_quiet_vessels.add(str(p["vessel_id"]))
-        if p.get("audio_quiet_tail") == 1:
-            audio_quiet_vessels.add(str(p["vessel_id"]))
+    audio_quiet_vessels = audio_backed_vessels(presences, audio_object_shas, snr_threshold_db)
 
     # Sites come from acquired audio objects and from correlated presences, so window-only
     # near-shore sites (whose audio is not downloaded) still count toward site diversity.
@@ -134,17 +154,21 @@ def score_adequacy(
         if o["sample_rate_hz"] is not None
         and float(o["sample_rate_hz"]) / 2.0 >= WORKING_BAND_HZ[1]
     }
+    # Sample rate measured from stored audio headers (for sources whose objects carried no rate at
+    # acquisition, e.g. ADEON and ONC): band coverage rests on the audio actually present.
+    for source_id, rate in (measured_source_rates or {}).items():
+        if rate / 2.0 >= WORKING_BAND_HZ[1]:
+            band_sources.add(source_id)
     for source_id, rate in (window_source_rates or {}).items():
         if rate / 2.0 >= WORKING_BAND_HZ[1]:
             band_sources.add(source_id)
-    # Sources that carry decodable audio (an object with a duration), and which of those never had a
-    # sample rate recorded, so CA6 reports where band coverage is asserted rather than captured.
+    # Sources that carry decodable audio (an object with a duration), and which of those still have
+    # no captured rate (neither on the object row nor measured), so CA6 reports the remaining gap.
     audio_sources = {str(o["source_id"]) for o in objects if o.get("duration_s") is not None}
-    audio_sources_no_rate = {
-        s
-        for s in audio_sources
-        if not any(str(o["source_id"]) == s and o["sample_rate_hz"] is not None for o in objects)
-    }
+    rate_captured = {str(o["source_id"]) for o in objects if o["sample_rate_hz"] is not None} | set(
+        measured_source_rates or {}
+    )
+    audio_sources_no_rate = audio_sources - rate_captured
     eval_tiers: dict[int, int] = defaultdict(int)
     for o in objects:
         eval_tiers[_tier(str(o["truth_condition"]))] += 1
@@ -157,6 +181,7 @@ def score_adequacy(
             len(kinematic_quiet_vessels),
             len(close_vessels),
             split_audit,
+            snr_threshold_db,
         ),
         _ca3(len(registry), len(audio_quiet_vessels), len(kinematic_quiet_vessels), split_audit),
         _ca4(len(registry)),
@@ -176,6 +201,8 @@ def score_adequacy(
             "distinct_registry_vessels_total": len(registry),
             "distinct_audio_backed_quiet_tail_vessels": len(audio_quiet_vessels),
             "distinct_kinematic_quiet_tail_candidates": len(kinematic_quiet_vessels),
+            "snr_threshold_db": snr_threshold_db,
+            "audio_objects_with_rate_and_duration": len(audio_object_shas),
             "registry_vessels_by_site": {s: len(v) for s, v in per_site.items()},
             "close_passage_vessels_within_5km": len(close_vessels),
             "sites": sites,
@@ -216,6 +243,7 @@ def _ca2(
     kinematic_quiet: int,
     close: int,
     split_audit: dict[str, Any] | None,
+    snr_threshold_db: float,
 ) -> CriterionScore:
     need = QUIET_HELDOUT_MIN + QUIET_TRAINSIDE_MIN
     if split_audit is not None and split_audit["meets_ca2"]:
@@ -233,9 +261,9 @@ def _ca2(
     return CriterionScore(
         id="CA2",
         consumer="Quiet-tail proxy vessels for surrogate validation (SD2, E1)",
-        measured=f"{audio_quiet} audio-backed quiet-tail vessels (close/slow/isolated AND audible "
-        f"in-band at closest approach); {kinematic_quiet} kinematic candidates; {close} close-only "
-        f"proxy; {registry_total} registry-grade total{split_note}",
+        measured=f"{audio_quiet} audio-backed quiet-tail vessels (stored audio object AND in-band "
+        f"SNR >= {snr_threshold_db:g} dB at closest approach); {kinematic_quiet} kinematic "
+        f"candidates; {close} close-only proxy; {registry_total} registry-grade total{split_note}",
         threshold=f">={QUIET_HELDOUT_MIN} held-out and >={QUIET_TRAINSIDE_MIN} train-side "
         "disjoint, each audio-backed",
         binding="binding",
