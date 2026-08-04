@@ -15,6 +15,10 @@
 # halves. The committed lineage (docs/e1_realdata_lineage.json) and its object hashes let a third
 # party rebuild and check the verdict without the gitignored ledger. The seed is fixed for a
 # byte-stable lineage; the object hashes resolve against the R2 store.
+#
+# To audit the committed verdict WITHOUT R2 or the environment, run
+# scripts/verify_e1_realdata.py, which re-derives the pass-or-fail from the committed per-rung
+# numbers using the standard library alone. This script is the deeper from-audio regeneration.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
