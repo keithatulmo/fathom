@@ -109,7 +109,12 @@ def score_adequacy(
         if p.get("quiet_tail") == 1:
             quiet_tail_vessels.add(str(p["vessel_id"]))
 
-    sites = sorted({str(o["site"]) for o in objects if o["site"]})
+    # Sites come from acquired audio objects and from correlated presences, so window-only
+    # near-shore sites (whose audio is not downloaded) still count toward site diversity.
+    sites = sorted(
+        {str(o["site"]) for o in objects if o["site"]}
+        | {str(p["site"]) for p in presences if p.get("site")}
+    )
     regimes_present = {r for site in sites if (r := SITE_REGIMES.get(site)) is not None}
     biologic_objects = sum(1 for o in objects if family.get(str(o["source_id"])) == 4)
     band_sources = {
@@ -126,7 +131,7 @@ def score_adequacy(
         _ca1(biologic_objects, len(presences), len(registry), len(per_site)),
         _ca2(len(registry), len(quiet_tail_vessels), len(close_vessels)),
         _ca3(len(registry), len(quiet_tail_vessels)),
-        _ca4(len(presences)),
+        _ca4(len(registry)),
         _ca5(sites, regimes_present),
         _ca6(band_sources),
         _ca7(len(registry), eval_tiers),
@@ -212,17 +217,20 @@ def _ca3(registry_total: int, quiet_tail: int) -> CriterionScore:
     )
 
 
-def _ca4(vessel_events: int) -> CriterionScore:
+def _ca4(exchangeable_vessels: int) -> CriterionScore:
+    # The exchangeable unit for association/class calibration is the vessel (SD3 cluster bootstrap),
+    # so the count that matters is distinct vessels, not raw passages.
+    verdict = PASS if exchangeable_vessels >= CALIBRATION_EVENTS_MIN else FAIL
     return CriterionScore(
         id="CA4",
         consumer="Calibration set for conformal outputs (SD8, E6, A2)",
-        measured=f"~{vessel_events} vessel-passage events for association/class calibration "
+        measured=f"{exchangeable_vessels} exchangeable vessels for association/class calibration "
         f"(need ~{CALIBRATION_EVENTS_MIN}); existence/rejection draw from abundant clutter",
         threshold=f"~{CALIBRATION_EVENTS_MIN} exchangeable events per calibrated output",
         binding="partly (association/class outputs)",
-        verdict=FAIL,
-        directive="The association and class outputs are far short; grow the same vessel cohort as "
-        "CA2/CA3. Existence and rejection calibration pass on abundant clutter.",
+        verdict=verdict,
+        directive="The association and class outputs draw on distinct vessels and are short; grow "
+        "the same cohort as CA2/CA3. Existence and rejection calibration pass on abundant clutter.",
     )
 
 
