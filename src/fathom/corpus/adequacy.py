@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .sources import FIRST_WAVE
+from .splits import build_split_audit
 
 # Proposed pass thresholds from the adequacy note (Section 4). Provisional engineering defaults.
 QUIET_HELDOUT_MIN = 12
@@ -88,11 +89,13 @@ def score_adequacy(
     objects: list[dict[str, Any]],
     presences: list[dict[str, Any]],
     *,
+    splits: list[dict[str, Any]] | None = None,
     generated_at: str | None = None,
 ) -> AdequacyReport:
-    """Score the corpus against CA1-CA7 from the recorded objects and vessel presences."""
+    """Score the corpus against CA1-CA7 from objects, presences, and split assignment."""
     generated = generated_at or datetime.now(UTC).isoformat()
     family = {spec.source_id: spec.family for spec in FIRST_WAVE}
+    split_audit = build_split_audit(splits) if splits else None
 
     # Distinct registry-grade (AIS-verified tier-one) vessels, total and per site, plus the
     # kinematically classified quiet-tail cohort and the coarser close-passage proxy.
@@ -129,8 +132,8 @@ def score_adequacy(
 
     criteria = (
         _ca1(biologic_objects, len(presences), len(registry), len(per_site)),
-        _ca2(len(registry), len(quiet_tail_vessels), len(close_vessels)),
-        _ca3(len(registry), len(quiet_tail_vessels)),
+        _ca2(len(registry), len(quiet_tail_vessels), len(close_vessels), split_audit),
+        _ca3(len(registry), len(quiet_tail_vessels), split_audit),
         _ca4(len(registry)),
         _ca5(sites, regimes_present),
         _ca6(band_sources),
@@ -180,16 +183,27 @@ def _ca1(biologics: int, transits: int, ship_vessels: int, correlated_sites: int
     )
 
 
-def _ca2(registry_total: int, quiet_tail: int, close: int) -> CriterionScore:
+def _ca2(
+    registry_total: int, quiet_tail: int, close: int, split_audit: dict[str, Any] | None
+) -> CriterionScore:
     need = QUIET_HELDOUT_MIN + QUIET_TRAINSIDE_MIN
-    # Quiet-tail is now classified from kinematics; the count meeting the threshold is marginal
-    # rather than a clean pass, because a disjoint held-out/train-side split is still pending.
-    verdict = MARGINAL if quiet_tail >= need else FAIL
+    if split_audit is not None and split_audit["meets_ca2"]:
+        verdict = PASS
+    elif quiet_tail >= need:
+        # The count is met, but held-out and train-side are not yet split disjointly.
+        verdict = MARGINAL
+    else:
+        verdict = FAIL
+    split_note = ""
+    if split_audit is not None:
+        held = split_audit["quiet_tail_counts"]["test"]
+        train = split_audit["quiet_tail_counts"]["train"]
+        split_note = f"; split held-out {held}, train-side {train}"
     return CriterionScore(
         id="CA2",
         consumer="Quiet-tail proxy vessels for surrogate validation (SD2, E1)",
         measured=f"{quiet_tail} quiet-tail vessels (close, slow, isolated); {close} close-only "
-        f"proxy; {registry_total} registry-grade total",
+        f"proxy; {registry_total} registry-grade total{split_note}",
         threshold=f">={QUIET_HELDOUT_MIN} held-out and >={QUIET_TRAINSIDE_MIN} train-side disjoint",
         binding="binding",
         verdict=verdict,
@@ -198,8 +212,12 @@ def _ca2(registry_total: int, quiet_tail: int, close: int) -> CriterionScore:
     )
 
 
-def _ca3(registry_total: int, quiet_tail: int) -> CriterionScore:
-    if registry_total < VESSELS_TOTAL_MIN or quiet_tail < QUIET_TAIL_TOTAL_MIN:
+def _ca3(
+    registry_total: int, quiet_tail: int, split_audit: dict[str, Any] | None
+) -> CriterionScore:
+    if split_audit is not None and split_audit["meets_ca3"]:
+        verdict = PASS
+    elif registry_total < VESSELS_TOTAL_MIN or quiet_tail < QUIET_TAIL_TOTAL_MIN:
         verdict = FAIL
     else:
         # Both counts met; disjoint split assignment and its proof are still pending.

@@ -25,6 +25,7 @@ _APPEND_ONLY_TABLES = (
     "corpus_derivatives",
     "corpus_recording_windows",
     "corpus_vessel_presence",
+    "corpus_vessel_splits",
     "runs",
     "run_status",
     "artifacts",
@@ -184,6 +185,15 @@ CREATE TABLE IF NOT EXISTS corpus_vessel_presence (
     quiet_tail       INTEGER,            -- 1 when the passage is close, slow, and isolated
     ais_source_sha   TEXT,
     created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS corpus_vessel_splits (
+    vessel_id     TEXT NOT NULL,
+    assign_run    TEXT NOT NULL,      -- versions the assignment; latest supersedes
+    split         TEXT NOT NULL,      -- 'train' | 'calibration' | 'test'
+    is_quiet_tail INTEGER NOT NULL,
+    created_at    TEXT NOT NULL,
+    PRIMARY KEY (vessel_id, assign_run)
 );
 """
 
@@ -454,6 +464,35 @@ class Ledger:
         """Return the total number of recorded vessel-presence rows."""
         row = self._conn.execute("SELECT COUNT(*) FROM corpus_vessel_presence").fetchone()
         return int(row[0])
+
+    def insert_vessel_split(self, *, record: dict[str, object]) -> None:
+        """Record a vessel's split assignment for an assignment run."""
+        self._conn.execute(
+            "INSERT OR IGNORE INTO corpus_vessel_splits "
+            "(vessel_id, assign_run, split, is_quiet_tail, created_at) "
+            "VALUES (:vessel_id, :assign_run, :split, :is_quiet_tail, :created_at)",
+            {**record, "created_at": _now_iso()},
+        )
+        self._conn.commit()
+
+    def latest_assign_run(self) -> str | None:
+        """Return the most recent split-assignment run identifier, or None if none exist."""
+        row = self._conn.execute(
+            "SELECT assign_run FROM corpus_vessel_splits ORDER BY created_at DESC, rowid DESC "
+            "LIMIT 1"
+        ).fetchone()
+        return None if row is None else str(row[0])
+
+    def get_vessel_splits(self) -> list[dict[str, object]]:
+        """Return the vessel split assignments for the latest assignment run."""
+        latest = self.latest_assign_run()
+        if latest is None:
+            return []
+        cursor = self._conn.execute(
+            "SELECT * FROM corpus_vessel_splits WHERE assign_run = ? ORDER BY vessel_id", (latest,)
+        )
+        columns = [description[0] for description in cursor.description]
+        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
 
     def get_vessel_presences(self) -> list[dict[str, object]]:
         """Return recorded vessel-presence rows for the latest correlation run, as dictionaries.

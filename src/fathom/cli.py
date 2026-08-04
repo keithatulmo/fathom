@@ -202,10 +202,11 @@ def _cmd_corpus_adequacy(args: argparse.Namespace, repo_root: Path) -> int:
     try:
         objects = ledger.get_corpus_objects()
         presences = ledger.get_vessel_presences()
+        splits = ledger.get_vessel_splits()
     finally:
         ledger.close()
 
-    report = score_adequacy(objects, presences)
+    report = score_adequacy(objects, presences, splits=splits or None)
     out_dir = repo_root / ".fathom" / "corpus"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "adequacy_scorecard.md").write_text(report.markdown, encoding="utf-8")
@@ -265,6 +266,37 @@ def _cmd_register_windows(args: argparse.Namespace, repo_root: Path) -> int:
     finally:
         ledger.close()
     print(f"registered {registered} recording windows for {spec.source_id} (total {total})")
+    return 0
+
+
+def _cmd_assign_splits(args: argparse.Namespace, repo_root: Path) -> int:
+    from .corpus.splits import assign_splits
+    from .ledger import Ledger
+
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    try:
+        presences = ledger.get_vessel_presences()
+        registry = {str(p["vessel_id"]) for p in presences if p["registry_grade"] == 1}
+        quiet = {str(p["vessel_id"]) for p in presences if p.get("quiet_tail") == 1}
+        assign_run = f"assign-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(2)}"
+        rows, audit = assign_splits(registry, quiet, assign_run)
+        for row in rows:
+            ledger.insert_vessel_split(record=row)
+    finally:
+        ledger.close()
+
+    out_dir = repo_root / ".fathom" / "corpus"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "split_audit.json").write_text(
+        json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    print(f"assigned {len(rows)} vessels to splits (run {assign_run})")
+    print(f"  vessel counts:     {audit['vessel_counts']}")
+    print(f"  quiet-tail counts: {audit['quiet_tail_counts']}")
+    print(
+        f"  disjoint: {audit['disjoint']}  meets CA2: {audit['meets_ca2']}  "
+        f"meets CA3: {audit['meets_ca3']}"
+    )
     return 0
 
 
@@ -432,6 +464,8 @@ def build_parser() -> argparse.ArgumentParser:
         "corpus-adequacy", help="Score the corpus against the CA1-CA7 adequacy criteria."
     )
 
+    sub.add_parser("assign-splits", help="Assign vessels to train/calibration/test splits (SD3).")
+
     regwin = sub.add_parser(
         "register-windows", help="Register recording windows for correlation without audio."
     )
@@ -480,6 +514,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_corpus_audit(args, repo_root)
     if args.command == "corpus-adequacy":
         return _cmd_corpus_adequacy(args, repo_root)
+    if args.command == "assign-splits":
+        return _cmd_assign_splits(args, repo_root)
     if args.command == "register-windows":
         return _cmd_register_windows(args, repo_root)
     if args.command == "corpus-truth":
