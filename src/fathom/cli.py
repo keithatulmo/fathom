@@ -203,10 +203,13 @@ def _cmd_corpus_adequacy(args: argparse.Namespace, repo_root: Path) -> int:
         objects = ledger.get_corpus_objects()
         presences = ledger.get_vessel_presences()
         splits = ledger.get_vessel_splits()
+        window_rates = ledger.get_window_source_rates()
     finally:
         ledger.close()
 
-    report = score_adequacy(objects, presences, splits=splits or None)
+    report = score_adequacy(
+        objects, presences, splits=splits or None, window_source_rates=window_rates or None
+    )
     out_dir = repo_root / ".fathom" / "corpus"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "adequacy_scorecard.md").write_text(report.markdown, encoding="utf-8")

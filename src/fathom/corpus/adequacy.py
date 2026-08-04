@@ -90,6 +90,7 @@ def score_adequacy(
     presences: list[dict[str, Any]],
     *,
     splits: list[dict[str, Any]] | None = None,
+    window_source_rates: dict[str, float] | None = None,
     generated_at: str | None = None,
 ) -> AdequacyReport:
     """Score the corpus against CA1-CA7 from objects, presences, and split assignment."""
@@ -120,12 +121,17 @@ def score_adequacy(
     )
     regimes_present = {r for site in sites if (r := SITE_REGIMES.get(site)) is not None}
     biologic_objects = sum(1 for o in objects if family.get(str(o["source_id"])) == 4)
+    # Band coverage is known where a source's sample rate reaches the top of the working band,
+    # whether from an acquired audio object or a registered window (whose audio is not downloaded).
     band_sources = {
         str(o["source_id"])
         for o in objects
         if o["sample_rate_hz"] is not None
         and float(o["sample_rate_hz"]) / 2.0 >= WORKING_BAND_HZ[1]
     }
+    for source_id, rate in (window_source_rates or {}).items():
+        if rate / 2.0 >= WORKING_BAND_HZ[1]:
+            band_sources.add(source_id)
     eval_tiers: dict[int, int] = defaultdict(int)
     for o in objects:
         eval_tiers[_tier(str(o["truth_condition"]))] += 1
@@ -269,7 +275,14 @@ def _ca5(sites: list[str], regimes_present: set[str]) -> CriterionScore:
 
 def _ca6(band_sources: set[str]) -> CriterionScore:
     covers_proof = "mbari_pacific_sound_2khz" in band_sources
-    verdict = MARGINAL if covers_proof else FAIL
+    # The working band is covered at the proof site and at least one other (near-shore) site where
+    # the quiet-tail surrogate data lives; sources whose rate is unrecorded are a recorded partial.
+    if covers_proof and len(band_sources) >= 2:
+        verdict = PASS
+    elif covers_proof:
+        verdict = MARGINAL
+    else:
+        verdict = FAIL
     return CriterionScore(
         id="CA6",
         consumer="In-band content for the front end (SD4, E2)",

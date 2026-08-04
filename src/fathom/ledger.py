@@ -394,6 +394,14 @@ class Ledger:
         ).fetchone()
         return int(row[0])
 
+    def get_window_source_rates(self) -> dict[str, float]:
+        """Return the sample rate of each source that has registered recording windows."""
+        rows = self._conn.execute(
+            "SELECT source_id, sample_rate_hz FROM corpus_recording_windows "
+            "WHERE sample_rate_hz IS NOT NULL GROUP BY source_id"
+        ).fetchall()
+        return {str(row[0]): float(row[1]) for row in rows}
+
     def insert_vessel_presence(self, *, record: dict[str, object]) -> None:
         """Record a vessel's correlated presence in a recording; idempotent by presence id."""
         row = {
