@@ -127,9 +127,11 @@ def fit_from_segments(
     The structural frequency ranges stay first-principles; the amplitude, roll-off, width, and
     wander ranges are the tenth-to-ninetieth-percentile spread measured across the train segments.
     """
+    from .broadband import BroadbandStats, extract_broadband_stats
     from .fit import TRAIN_SPLIT, ForbiddenSplitError
 
     stats: list[LineStats] = []
+    broadband: list[BroadbandStats] = []
     roster: list[str] = []
     quiet_flags: list[bool] = []
     for entry in train_segments:
@@ -139,7 +141,9 @@ def fit_from_segments(
                 f"{TRAIN_SPLIT!r}; surrogate statistics fit from train-side audio only (SD3 5.4)"
             )
         samples = np.asarray(entry["samples"], dtype=np.float64)
-        stats.append(extract_line_stats(samples, float(entry["sample_rate"]), band))  # type: ignore[arg-type]
+        rate = float(entry["sample_rate"])  # type: ignore[arg-type]
+        stats.append(extract_line_stats(samples, rate, band))
+        broadband.append(extract_broadband_stats(samples, rate, band))
         roster.append(str(entry["vessel_id"]))
         quiet_flags.append(bool(entry.get("is_quiet_tail", True)))
     if not stats:
@@ -156,6 +160,25 @@ def fit_from_segments(
     amp_span = max(amp_hi - amp_lo, 1e-3)
     quiet_fraction = sum(quiet_flags) / len(quiet_flags) if quiet_flags else 0.5
 
+    # The broadband continuum shape and level are fit from the same train-side segments: the
+    # exponent range is the spread of the per-vessel between-line power-law slope, and the
+    # line-to-broadband ratio range is the spread of the per-vessel ratios, so the surrogate draws a
+    # continuum that spans the real range of quiet-vessel prominence (WO-5 Section 3).
+    exponents = [b.continuum_exponent for b in broadband]
+    lbr_dbs = [b.lbr_db for b in broadband]
+    broadband_per_vessel = sorted(
+        (
+            {
+                "vessel_id": vessel_id,
+                "continuum_exponent": b.continuum_exponent,
+                "line_to_broadband_db": b.lbr_db,
+                "n_floor_bins": b.n_floor_bins,
+            }
+            for vessel_id, b in zip(roster, broadband, strict=True)
+        ),
+        key=lambda r: str(r["vessel_id"]),
+    )
+
     # Normalise the measured amplitude spread onto the family weight ranges: the shaft carries the
     # top of the spread, the auxiliary the bottom, so quiet-target draws stay sparse and low.
     return SurrogateDistributions(
@@ -169,7 +192,20 @@ def fit_from_segments(
         rolloff_range=_percentile_range(rolloffs),
         width_hz_range=_percentile_range(widths),
         wander_hz_range=_percentile_range(wanders),
-        provenance={"structural_ranges": "first_principles", "amplitude_statistics": "train_audio"},
+        continuum_exponent_range=_percentile_range(exponents),
+        lbr_db_range=_percentile_range(lbr_dbs),
+        provenance={
+            "structural_ranges": "first_principles",
+            "amplitude_statistics": "train_audio",
+            "broadband_statistics": "train_audio",
+            "broadband_fit": {
+                "train_vessel_ids": sorted(roster),
+                "per_vessel": broadband_per_vessel,
+                "continuum_exponent_range": list(_percentile_range(exponents)),
+                "line_to_broadband_db_range": list(_percentile_range(lbr_dbs)),
+                "leak_guard": "train_split_only; held-out and test raise ForbiddenSplitError",
+            },
+        },
     )
 
 

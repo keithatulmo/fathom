@@ -8,9 +8,10 @@
 #   - R2 credentials sourced into the environment (FATHOM_R2_*); they live outside the repo and are
 #     never committed. No owner-certified value is read or written.
 #
-# The run fits the surrogate line statistics to train-side quiet-tail audio only, opens the held-out
-# class solely at the comparison, sweeps the signal-to-noise ladder through the identical reference
-# front end, detector, and reference rejector, and decides realism by whether the surrogate-to-class
+# The run fits the surrogate line statistics AND the broadband continuum (the WO-5 hybrid: continuum
+# shape and line-to-broadband ratio) to train-side quiet-tail audio only, opens the held-out class
+# solely at the comparison, sweeps the signal-to-noise ladder through the identical reference front
+# end, detector, and reference rejector, and decides realism by whether the surrogate-to-class
 # Wasserstein distance falls inside the null distribution derived from the held-out class's own
 # halves. The committed lineage (docs/e1_realdata_lineage.json) and its object hashes let a third
 # party rebuild and check the verdict without the gitignored ledger. The seed is fixed for a

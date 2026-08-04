@@ -524,11 +524,14 @@ def _cmd_e1_realdata(args: argparse.Namespace, repo_root: Path) -> int:
     )
     payload["fitted_distributions"] = distributions.to_dict()
     payload["seed"] = args.seed
-    # The run id is derived from content already in the payload (the fitted roster sizes and the
-    # seed), so it is deterministic, and it is written into the payload before hashing so the
-    # committed artifact self-identifies and is auditable from committed state alone.
-    run_id = f"e1-realdata-{ledger_latest_tag(payload)}-{args.seed}"
+    # The run id is derived from content already in the payload (the surrogate recipe, the fitted
+    # roster sizes, and the seed), so it is deterministic, and it is written into the payload before
+    # hashing so the committed artifact self-identifies and is auditable from committed state alone.
+    # The recipe tag distinguishes the WO-5 hybrid run from the WO-4 narrowband run at one seed.
+    recipe = "hybrid" if payload["fit_provenance"].get("broadband_statistics") else "narrowband"
+    run_id = f"e1-realdata-{recipe}-{ledger_latest_tag(payload)}-{args.seed}"
     payload["run_id"] = run_id
+    payload["surrogate_recipe"] = recipe
 
     out_path = (repo_root / args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -33,12 +33,12 @@ from .e1 import (
     wasserstein_distance,
 )
 from .surrogate.extract import fit_from_segments
-from .surrogate.fit import SurrogateDistributions, draw_machinery
+from .surrogate.fit import SurrogateDistributions, draw_broadband, draw_machinery
 from .surrogate.kinematics import KinematicParams, evaluate_track
 from .surrogate.level import inject_at_snr
 from .surrogate.lines import build_lines
 from .surrogate.propagation import PropagationParams
-from .surrogate.synth import synthesize
+from .surrogate.synth import add_broadband, synthesize, synthesize_continuum
 
 _DISTANCE_REASONING = (
     "Wasserstein integrates the difference of the empirical distribution functions across the "
@@ -117,7 +117,7 @@ def run_e1_realdata(
                 doppler_peak=config.doppler_peak,
             )
             track = evaluate_track(kinematics, np.arange(n, dtype=np.float64) / rate)
-            signal = synthesize(
+            line_signal = synthesize(
                 build_lines(machinery),
                 track,
                 propagation,
@@ -125,6 +125,18 @@ def run_e1_realdata(
                 n / rate,
                 derive_seed(seed, f"synth-{k}-{j}"),
             )
+            # The hybrid surrogate adds the fitted broadband continuum beneath the lines before
+            # injection (WO-5), so its line prominence is bounded by its own between-line energy the
+            # way a real quiet vessel's is, rather than climbing without bound with the level.
+            broadband = draw_broadband(distributions, derive_seed(seed, f"bb-{k}-{j}"))
+            continuum = synthesize_continuum(
+                line_signal.shape[0],
+                rate,
+                band,
+                broadband.continuum_exponent,
+                derive_seed(seed, f"cont-{k}-{j}"),
+            )
+            signal = add_broadband(line_signal, continuum, band, rate, broadband.lbr_db)
             injected, _ = inject_at_snr(signal, background, band, rate, snr)
             confidence, rejector = _responses(injected, rate, config, band)
             surrogate_conf.append(confidence)

@@ -18,12 +18,12 @@ import numpy as np
 
 from ..artifacts import AudioCorpus
 from ..determinism import derive_seed
-from .fit import SurrogateDistributions, draw_machinery
+from .fit import SurrogateDistributions, draw_broadband, draw_machinery
 from .kinematics import KinematicParams, evaluate_track
 from .level import inject_at_snr
 from .lines import build_lines
 from .propagation import PropagationParams
-from .synth import synthesize
+from .synth import add_broadband, synthesize, synthesize_continuum
 
 
 @dataclass(frozen=True)
@@ -81,9 +81,21 @@ def inject_background(
         channel_seed = derive_seed(seed, str(channel_id))
         machinery = draw_machinery(distributions, derive_seed(channel_seed, "machinery"))
         lines = build_lines(machinery)
-        signal = synthesize(
+        line_signal = synthesize(
             lines, track, propagation, sample_rate, duration_s, derive_seed(channel_seed, "synth")
         )
+        # The hybrid surrogate adds a broadband continuum beneath the lines at a fitted
+        # line-to-broadband ratio (WO-5): drawn for every target, quiet or not, so a quiet surrogate
+        # is broadband plus auxiliary lines and its line prominence is bounded like a real vessel's.
+        broadband = draw_broadband(distributions, derive_seed(channel_seed, "broadband"))
+        continuum = synthesize_continuum(
+            line_signal.shape[0],
+            sample_rate,
+            spec.band,
+            broadband.continuum_exponent,
+            derive_seed(channel_seed, "continuum"),
+        )
+        signal = add_broadband(line_signal, continuum, spec.band, sample_rate, broadband.lbr_db)
         channel_injected, achieved = inject_at_snr(
             signal, background.samples[row], spec.band, sample_rate, spec.requested_snr_db
         )
@@ -96,6 +108,10 @@ def inject_background(
                 "achieved_snr_db": achieved,
                 "band_hz": [spec.band[0], spec.band[1]],
                 "machinery": machinery.to_dict(),
+                "broadband": {
+                    "continuum_exponent": broadband.continuum_exponent,
+                    "line_to_broadband_db": broadband.lbr_db,
+                },
                 "kinematics": kinematics.to_dict(),
                 "propagation": propagation.to_dict(),
             }

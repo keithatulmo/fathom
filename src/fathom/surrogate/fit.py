@@ -19,10 +19,13 @@ are dimensionless or in hertz, and no absolute level is expressible.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..determinism import rng
 from .lines import MachineryParams
+
+if TYPE_CHECKING:
+    from .broadband import BroadbandParams
 
 TRAIN_SPLIT = "train"
 
@@ -41,6 +44,11 @@ _AUX_AMP_RANGE = (0.1, 0.4)
 _ROLLOFF_RANGE = (0.4, 0.8)
 _WIDTH_HZ_RANGE = (0.1, 0.5)
 _WANDER_HZ_RANGE = (0.02, 0.2)
+# First-principles broadband continuum priors, refined from train audio by the WO-5 fit. The
+# continuum is red (its exponent negative), and the line-to-broadband ratio spans the
+# broadband-dominated quiet extreme to a moderately line-dominated case; both are dimensionless.
+_CONTINUUM_EXPONENT_RANGE = (-2.0, -0.5)
+_LBR_DB_RANGE = (0.0, 10.0)
 _SHAFT_HARMONICS = 4
 _BLADE_HARMONICS = 3
 _ELECTRICAL_HARMONICS = 2
@@ -81,6 +89,8 @@ class SurrogateDistributions:
     blade_harmonics: int = _BLADE_HARMONICS
     electrical_harmonics: int = _ELECTRICAL_HARMONICS
     propulsion_absent_fraction: float = _PROPULSION_ABSENT_FRACTION
+    continuum_exponent_range: tuple[float, float] = _CONTINUUM_EXPONENT_RANGE
+    lbr_db_range: tuple[float, float] = _LBR_DB_RANGE
     provenance: dict[str, Any] = field(
         default_factory=lambda: {"structural_ranges": "first_principles"}
     )
@@ -111,6 +121,8 @@ class SurrogateDistributions:
             "rolloff_range",
             "width_hz_range",
             "wander_hz_range",
+            "continuum_exponent_range",
+            "lbr_db_range",
         ):
             if key in kwargs:
                 kwargs[key] = tuple(kwargs[key])
@@ -188,4 +200,22 @@ def draw_machinery(distributions: SurrogateDistributions, seed: int) -> Machiner
         wander_hz=float(generator.uniform(*distributions.wander_hz_range)),
         quiet_mode=quiet,
         propulsion_absent=propulsion_absent,
+    )
+
+
+def draw_broadband(distributions: SurrogateDistributions, seed: int) -> BroadbandParams:
+    """Draw one broadband continuum parameter set from the fitted distributions, deterministically.
+
+    The continuum exponent and the line-to-broadband ratio are drawn independently of the machinery
+    draw and of the quiet-target flag, so the ratio spans the full range the train cohort shows,
+    from the broadband-dominated quiet extreme to the line-dominated case, rather than sitting at a
+    single clean point. The continuum is drawn for every target, quiet or not, so a quiet surrogate
+    is broadband plus auxiliary lines rather than the near-silent line-only object it was.
+    """
+    from .broadband import BroadbandParams
+
+    generator = rng(seed)
+    return BroadbandParams(
+        continuum_exponent=float(generator.uniform(*distributions.continuum_exponent_range)),
+        lbr_db=float(generator.uniform(*distributions.lbr_db_range)),
     )

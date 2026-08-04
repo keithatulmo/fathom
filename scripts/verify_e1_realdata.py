@@ -57,6 +57,28 @@ def _check(lineage: dict[str, Any]) -> list[str]:
             f"operating_rungs {lineage['verdict']['operating_rungs']} but the band has "
             f"{len(operating)} rungs"
         )
+    problems.extend(_check_broadband(lineage))
+    return problems
+
+
+def _check_broadband(lineage: dict[str, Any]) -> list[str]:
+    """Audit the WO-5 hybrid recipe from committed state: broadband fit present and leak-guarded."""
+    problems: list[str] = []
+    if lineage.get("surrogate_recipe") != "hybrid":
+        return problems  # a narrowband (WO-4) lineage carries no broadband fit to audit
+    provenance = lineage.get("fit_provenance", {})
+    if provenance.get("broadband_statistics") != "train_audio":
+        problems.append("hybrid recipe but fit_provenance.broadband_statistics is not train_audio")
+    fit = provenance.get("broadband_fit", {})
+    if not fit.get("per_vessel"):
+        problems.append("hybrid recipe but the broadband fit lists no per-vessel continuum numbers")
+    if "ForbiddenSplitError" not in str(fit.get("leak_guard", "")):
+        problems.append("hybrid recipe but the broadband fit carries no leak-guard attestation")
+    distributions = lineage.get("fitted_distributions", {})
+    for key in ("continuum_exponent_range", "lbr_db_range"):
+        pair = distributions.get(key)
+        if not (isinstance(pair, list) and len(pair) == 2 and pair[0] <= pair[1]):
+            problems.append(f"hybrid recipe but fitted_distributions.{key} is not a valid range")
     return problems
 
 
@@ -68,6 +90,7 @@ def main() -> int:
     verdict = lineage["verdict"]
     print(f"lineage: {path}")
     print(f"run id:  {lineage.get('run_id')}  (seed {lineage.get('seed')})")
+    print(f"recipe:  {lineage.get('surrogate_recipe', 'narrowband')}")
     print(
         f"distance: {lineage['distance']}  tolerance: {lineage['tolerance_method']} "
         f"@ p{lineage['null_percentile']}"

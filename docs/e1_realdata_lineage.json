@@ -3,6 +3,120 @@
   "distance_reasoning": "Wasserstein integrates the difference of the empirical distribution functions across the support, so it registers the tail-mass differences the operating point depends on, unlike the Kolmogorov-Smirnov supremum used on fixtures (WO-4 Section 4). KS is reported alongside for continuity, but the verdict rests on the Wasserstein-inside-null test.",
   "fit_provenance": {
     "amplitude_statistics": "train_audio",
+    "broadband_fit": {
+      "continuum_exponent_range": [
+        -0.6936843342830739,
+        0.0
+      ],
+      "leak_guard": "train_split_only; held-out and test raise ForbiddenSplitError",
+      "line_to_broadband_db_range": [
+        -11.68656160631609,
+        -1.5881870743229687
+      ],
+      "per_vessel": [
+        {
+          "continuum_exponent": -0.7107946652551216,
+          "line_to_broadband_db": -2.216003851204087,
+          "n_floor_bins": 145,
+          "vessel_id": "IMO7731153"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -13.01396262627857,
+          "n_floor_bins": 147,
+          "vessel_id": "IMO8853192"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -6.455002881610515,
+          "n_floor_bins": 144,
+          "vessel_id": "IMO8885573"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -4.511182683577461,
+          "n_floor_bins": 144,
+          "vessel_id": "IMO8973435"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -6.65084973869755,
+          "n_floor_bins": 145,
+          "vessel_id": "IMO9518775"
+        },
+        {
+          "continuum_exponent": -0.6537602286816292,
+          "line_to_broadband_db": -10.031815378866288,
+          "n_floor_bins": 148,
+          "vessel_id": "MMSI319052800-TOROA"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -1.8467540102122233,
+          "n_floor_bins": 144,
+          "vessel_id": "MMSI338192884-PRIORITY"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -12.395738560937435,
+          "n_floor_bins": 148,
+          "vessel_id": "MMSI338857000-PIPE_DREAMER"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -4.56253817779565,
+          "n_floor_bins": 144,
+          "vessel_id": "MMSI366764000-GULF_CHALLENGER"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -5.664875443632452,
+          "n_floor_bins": 146,
+          "vessel_id": "MMSI367045190-BALTIC_DAWN"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -1.4773726732275745,
+          "n_floor_bins": 140,
+          "vessel_id": "MMSI367615560-WARREN_JR"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -5.3292049594570665,
+          "n_floor_bins": 145,
+          "vessel_id": "MMSI367703980-HELGA_G"
+        },
+        {
+          "continuum_exponent": -2.7812046961645365,
+          "line_to_broadband_db": 0.0,
+          "n_floor_bins": 149,
+          "vessel_id": "MMSI367742810-JOHN_H_MARTIN"
+        },
+        {
+          "continuum_exponent": 0.0,
+          "line_to_broadband_db": -4.9993343938509565,
+          "n_floor_bins": 145,
+          "vessel_id": "MMSI367925000-CG_KEY_LARGO"
+        }
+      ],
+      "train_vessel_ids": [
+        "IMO7731153",
+        "IMO8853192",
+        "IMO8885573",
+        "IMO8973435",
+        "IMO9518775",
+        "MMSI319052800-TOROA",
+        "MMSI338192884-PRIORITY",
+        "MMSI338857000-PIPE_DREAMER",
+        "MMSI366764000-GULF_CHALLENGER",
+        "MMSI367045190-BALTIC_DAWN",
+        "MMSI367615560-WARREN_JR",
+        "MMSI367703980-HELGA_G",
+        "MMSI367742810-JOHN_H_MARTIN",
+        "MMSI367925000-CG_KEY_LARGO"
+      ]
+    },
+    "broadband_statistics": "train_audio",
     "structural_ranges": "first_principles"
   },
   "fitted_distributions": {
@@ -30,6 +144,10 @@
       7
     ],
     "blade_harmonics": 3,
+    "continuum_exponent_range": [
+      -0.6936843342830739,
+      0.0
+    ],
     "electrical_amp_range": [
       2.4340783362635716,
       3.64293330061102
@@ -39,9 +157,127 @@
       50.0,
       60.0
     ],
+    "lbr_db_range": [
+      -11.68656160631609,
+      -1.5881870743229687
+    ],
     "propulsion_absent_fraction": 0.5,
     "provenance": {
       "amplitude_statistics": "train_audio",
+      "broadband_fit": {
+        "continuum_exponent_range": [
+          -0.6936843342830739,
+          0.0
+        ],
+        "leak_guard": "train_split_only; held-out and test raise ForbiddenSplitError",
+        "line_to_broadband_db_range": [
+          -11.68656160631609,
+          -1.5881870743229687
+        ],
+        "per_vessel": [
+          {
+            "continuum_exponent": -0.7107946652551216,
+            "line_to_broadband_db": -2.216003851204087,
+            "n_floor_bins": 145,
+            "vessel_id": "IMO7731153"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -13.01396262627857,
+            "n_floor_bins": 147,
+            "vessel_id": "IMO8853192"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -6.455002881610515,
+            "n_floor_bins": 144,
+            "vessel_id": "IMO8885573"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -4.511182683577461,
+            "n_floor_bins": 144,
+            "vessel_id": "IMO8973435"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -6.65084973869755,
+            "n_floor_bins": 145,
+            "vessel_id": "IMO9518775"
+          },
+          {
+            "continuum_exponent": -0.6537602286816292,
+            "line_to_broadband_db": -10.031815378866288,
+            "n_floor_bins": 148,
+            "vessel_id": "MMSI319052800-TOROA"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -1.8467540102122233,
+            "n_floor_bins": 144,
+            "vessel_id": "MMSI338192884-PRIORITY"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -12.395738560937435,
+            "n_floor_bins": 148,
+            "vessel_id": "MMSI338857000-PIPE_DREAMER"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -4.56253817779565,
+            "n_floor_bins": 144,
+            "vessel_id": "MMSI366764000-GULF_CHALLENGER"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -5.664875443632452,
+            "n_floor_bins": 146,
+            "vessel_id": "MMSI367045190-BALTIC_DAWN"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -1.4773726732275745,
+            "n_floor_bins": 140,
+            "vessel_id": "MMSI367615560-WARREN_JR"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -5.3292049594570665,
+            "n_floor_bins": 145,
+            "vessel_id": "MMSI367703980-HELGA_G"
+          },
+          {
+            "continuum_exponent": -2.7812046961645365,
+            "line_to_broadband_db": 0.0,
+            "n_floor_bins": 149,
+            "vessel_id": "MMSI367742810-JOHN_H_MARTIN"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -4.9993343938509565,
+            "n_floor_bins": 145,
+            "vessel_id": "MMSI367925000-CG_KEY_LARGO"
+          }
+        ],
+        "train_vessel_ids": [
+          "IMO7731153",
+          "IMO8853192",
+          "IMO8885573",
+          "IMO8973435",
+          "IMO9518775",
+          "MMSI319052800-TOROA",
+          "MMSI338192884-PRIORITY",
+          "MMSI338857000-PIPE_DREAMER",
+          "MMSI366764000-GULF_CHALLENGER",
+          "MMSI367045190-BALTIC_DAWN",
+          "MMSI367615560-WARREN_JR",
+          "MMSI367703980-HELGA_G",
+          "MMSI367742810-JOHN_H_MARTIN",
+          "MMSI367925000-CG_KEY_LARGO"
+        ]
+      },
+      "broadband_statistics": "train_audio",
       "structural_ranges": "first_principles"
     },
     "quiet_fraction": 1.0,
@@ -212,7 +448,7 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.2679487179487179,
+      "ks": 0.6333333333333333,
       "null_median": 3.6585107826612138,
       "null_tolerance": 7.795178641218333,
       "rejector_inside_null": true,
@@ -224,8 +460,8 @@
         ],
         "detect_rate": 0.05
       },
-      "test_median": 5.112335394562026,
-      "wasserstein": 7.628640798963209
+      "test_median": 6.715797056190924,
+      "wasserstein": 6.6442762961750965
     },
     {
       "detectability_overlap": true,
@@ -236,7 +472,7 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.23461538461538456,
+      "ks": 0.6897435897435897,
       "null_median": 3.8479793373973408,
       "null_tolerance": 8.509806204046244,
       "rejector_inside_null": true,
@@ -248,8 +484,8 @@
         ],
         "detect_rate": 0.05
       },
-      "test_median": 4.058262003326211,
-      "wasserstein": 2.668011716937198
+      "test_median": 7.4662189675637824,
+      "wasserstein": 7.607571016316946
     },
     {
       "detectability_overlap": true,
@@ -260,7 +496,7 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.42179487179487174,
+      "ks": 0.7333333333333333,
       "null_median": 3.7822894090514048,
       "null_tolerance": 8.352047530891639,
       "rejector_inside_null": true,
@@ -272,8 +508,8 @@
         ],
         "detect_rate": 0.1
       },
-      "test_median": 4.928223658691349,
-      "wasserstein": 5.9168516231974095
+      "test_median": 7.921812503432743,
+      "wasserstein": 7.8130585254091
     },
     {
       "detectability_overlap": true,
@@ -284,20 +520,20 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.4820512820512821,
+      "ks": 0.6628205128205128,
       "null_median": 3.8659046375869632,
       "null_tolerance": 8.441349920719537,
-      "rejector_inside_null": false,
+      "rejector_inside_null": true,
       "snr_db": 9.0,
       "surrogate": {
         "ci": [
-          0.15,
-          0.36666666666666664
+          0.16666666666666666,
+          0.38333333333333336
         ],
-        "detect_rate": 0.25
+        "detect_rate": 0.26666666666666666
       },
-      "test_median": 9.720631738442817,
-      "wasserstein": 10.77246075388392
+      "test_median": 7.52419960182033,
+      "wasserstein": 7.6481574401038666
     },
     {
       "detectability_overlap": true,
@@ -308,20 +544,20 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.5153846153846154,
+      "ks": 0.6128205128205129,
       "null_median": 3.8203551882154825,
       "null_tolerance": 8.489213941935793,
-      "rejector_inside_null": false,
+      "rejector_inside_null": true,
       "snr_db": 12.0,
       "surrogate": {
         "ci": [
-          0.15,
-          0.36666666666666664
+          0.16666666666666666,
+          0.38333333333333336
         ],
-        "detect_rate": 0.25
+        "detect_rate": 0.26666666666666666
       },
-      "test_median": 15.149460659102559,
-      "wasserstein": 15.375977010256136
+      "test_median": 7.503666827542457,
+      "wasserstein": 7.5632011400907535
     },
     {
       "detectability_overlap": true,
@@ -332,10 +568,10 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.5051282051282051,
+      "ks": 0.6192307692307693,
       "null_median": 3.8335589462681208,
       "null_tolerance": 8.512543053412516,
-      "rejector_inside_null": false,
+      "rejector_inside_null": true,
       "snr_db": 15.0,
       "surrogate": {
         "ci": [
@@ -344,8 +580,8 @@
         ],
         "detect_rate": 0.36666666666666664
       },
-      "test_median": 16.645950863572708,
-      "wasserstein": 17.111428625003818
+      "test_median": 7.138913394892561,
+      "wasserstein": 7.502308483329161
     },
     {
       "detectability_overlap": true,
@@ -356,10 +592,10 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.5653846153846154,
+      "ks": 0.7192307692307691,
       "null_median": 3.708570951614743,
       "null_tolerance": 8.147743573410265,
-      "rejector_inside_null": false,
+      "rejector_inside_null": true,
       "snr_db": 18.0,
       "surrogate": {
         "ci": [
@@ -368,8 +604,8 @@
         ],
         "detect_rate": 0.48333333333333334
       },
-      "test_median": 27.891017474594932,
-      "wasserstein": 47.173084741109335
+      "test_median": 7.536231951313296,
+      "wasserstein": 7.6804677718920455
     },
     {
       "detectability_overlap": true,
@@ -380,7 +616,7 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.5653846153846154,
+      "ks": 0.6833333333333333,
       "null_median": 3.6666329463036216,
       "null_tolerance": 8.01674719232479,
       "rejector_inside_null": false,
@@ -392,8 +628,8 @@
         ],
         "detect_rate": 0.48333333333333334
       },
-      "test_median": 28.53505058705875,
-      "wasserstein": 44.22503878681211
+      "test_median": 8.150169892749332,
+      "wasserstein": 7.801906700260785
     },
     {
       "detectability_overlap": false,
@@ -404,10 +640,10 @@
         ],
         "detect_rate": 0.15384615384615385
       },
-      "ks": 0.6666666666666667,
+      "ks": 0.6461538461538462,
       "null_median": 3.7619888817889606,
       "null_tolerance": 8.331005976892282,
-      "rejector_inside_null": false,
+      "rejector_inside_null": true,
       "snr_db": 24.0,
       "surrogate": {
         "ci": [
@@ -416,11 +652,11 @@
         ],
         "detect_rate": 0.5833333333333334
       },
-      "test_median": 71.69429157985715,
-      "wasserstein": 96.80486424284058
+      "test_median": 7.475147938588256,
+      "wasserstein": 7.612127091113197
     }
   ],
-  "run_id": "e1-realdata-train14-held13-20260804",
+  "run_id": "e1-realdata-hybrid-train14-held13-20260804",
   "seed": 20260804,
   "snr_ladder_db": [
     0.0,
@@ -433,6 +669,7 @@
     21.0,
     24.0
   ],
+  "surrogate_recipe": "hybrid",
   "tolerance_method": "held_out_null_distribution",
   "train_vessel_count": 14,
   "train_vessel_ids": [
