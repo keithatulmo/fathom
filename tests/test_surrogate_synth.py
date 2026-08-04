@@ -18,23 +18,38 @@ _BAND = (2.0, 400.0)
 
 def _machinery() -> MachineryParams:
     return MachineryParams(
-        shaft_hz=4.0, shaft_harmonics=3, blade_count=5, blade_harmonics=2,
-        electrical_hz=60.0, electrical_harmonics=2, aux_hz=(35.0, 120.0),
-        shaft_amp=1.0, blade_amp=0.8, electrical_amp=0.5, aux_amp=0.3,
-        harmonic_rolloff=0.6, line_width_hz=0.3, wander_hz=0.1,
+        shaft_hz=4.0,
+        shaft_harmonics=3,
+        blade_count=5,
+        blade_harmonics=2,
+        electrical_hz=60.0,
+        electrical_harmonics=2,
+        aux_hz=(35.0, 120.0),
+        shaft_amp=1.0,
+        blade_amp=0.8,
+        electrical_amp=0.5,
+        aux_amp=0.3,
+        harmonic_rolloff=0.6,
+        line_width_hz=0.3,
+        wander_hz=0.1,
     )
 
 
 def _kinematics() -> KinematicParams:
     return KinematicParams(
-        bearing0_deg=90.0, closest_proxy=1.0, speed_proxy=0.5, t_cpa_s=_DURATION / 2.0,
+        bearing0_deg=90.0,
+        closest_proxy=1.0,
+        speed_proxy=0.5,
+        t_cpa_s=_DURATION / 2.0,
         doppler_peak=0.02,
     )
 
 
 def _propagation() -> PropagationParams:
     return PropagationParams(
-        absorption_coeff=0.001, multipath_depth=0.3, multipath_spacing_hz=90.0,
+        absorption_coeff=0.001,
+        multipath_depth=0.3,
+        multipath_spacing_hz=90.0,
         spreading_exponent=1.0,
     )
 
@@ -88,7 +103,7 @@ def test_achieved_snr_within_tolerance_of_request() -> None:
     lines = build_lines(_machinery())
     track = evaluate_track(_kinematics(), _times())
     signal = synthesize(lines, track, _propagation(), _SAMPLE_RATE, _DURATION, seed=3)
-    background = rng(99).standard_normal(signal.shape[0]) * 0.5
+    background = np.asarray(rng(99).standard_normal(signal.shape[0]) * 0.5, dtype=np.float64)
     for requested in (-6.0, 0.0, 6.0, 12.0):
         _, achieved = inject_at_snr(signal, background, _BAND, _SAMPLE_RATE, requested)
         assert abs(achieved - requested) < 1.0, (requested, achieved)

@@ -30,8 +30,10 @@ def _params(**over: object) -> MachineryParams:
 
 def test_lines_fall_at_kinematic_frequencies() -> None:
     lines = build_lines(_params())
-    by_family = {f: lines.freqs[[i for i, fam in enumerate(lines.families) if fam == f]] for f in
-                 set(lines.families)}
+    by_family = {
+        f: lines.freqs[[i for i, fam in enumerate(lines.families) if fam == f]]
+        for f in set(lines.families)
+    }
     # Shaft fundamental and harmonics at k * shaft_hz.
     assert np.allclose(sorted(by_family["shaft"]), [4.0, 8.0, 12.0])
     # Blade-rate line at shaft_hz * blade_count = 20 Hz, plus its second harmonic.

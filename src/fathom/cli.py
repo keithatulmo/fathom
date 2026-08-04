@@ -224,9 +224,7 @@ def _cmd_fetch_quiet_tail(args: argparse.Namespace, repo_root: Path) -> int:
                         origin_url=str(win["origin_url"]),
                         site=str(win["site"]),
                         sample_rate_hz=(
-                            None
-                            if win["sample_rate_hz"] is None
-                            else float(win["sample_rate_hz"])  # type: ignore[arg-type]
+                            None if win["sample_rate_hz"] is None else float(win["sample_rate_hz"])  # type: ignore[arg-type]
                         ),
                         vessels=frozenset(vessels_by_recording[wid]),
                         min_range_m=range_by_recording[wid],

@@ -62,10 +62,15 @@ def _run_e1(
 
     def spec(snr: float) -> InjectionSpec:
         return InjectionSpec(
-            band=band, requested_snr_db=snr, bearing0_deg=config.bearing0_deg,
-            closest_proxy=config.closest_proxy, speed_proxy=config.speed_proxy,
-            doppler_peak=config.doppler_peak, t_cpa_fraction=config.t_cpa_fraction,
-            absorption_coeff=config.absorption_coeff, multipath_depth=config.multipath_depth,
+            band=band,
+            requested_snr_db=snr,
+            bearing0_deg=config.bearing0_deg,
+            closest_proxy=config.closest_proxy,
+            speed_proxy=config.speed_proxy,
+            doppler_peak=config.doppler_peak,
+            t_cpa_fraction=config.t_cpa_fraction,
+            absorption_coeff=config.absorption_coeff,
+            multipath_depth=config.multipath_depth,
             multipath_spacing_hz=config.multipath_spacing_hz,
             spreading_exponent=config.spreading_exponent,
         )
@@ -81,27 +86,41 @@ def _run_e1(
             background_surrogate, distributions, spec(snr), derive_seed(seed, f"surrogate-{index}")
         )
         conf_s, rej_s = channel_responses(
-            injected_s.samples, audio.sample_rate, config.nfft, config.hop, band,
+            injected_s.samples,
+            audio.sample_rate,
+            config.nfft,
+            config.hop,
+            band,
             config.energy_scale,
         )
         injected_h, _ = inject_background(
             background_held_out, distributions, spec(snr), derive_seed(seed, f"heldout-{index}")
         )
         conf_h, rej_h = channel_responses(
-            injected_h.samples, audio.sample_rate, config.nfft, config.hop, band,
+            injected_h.samples,
+            audio.sample_rate,
+            config.nfft,
+            config.hop,
+            band,
             config.energy_scale,
         )
         surrogate_rate.append(detection_rate(conf_s, config.threshold))
         surrogate_ci.append(
             bootstrap_rate_interval(
-                conf_s, config.threshold, config.bootstrap_resamples, config.bootstrap_alpha,
+                conf_s,
+                config.threshold,
+                config.bootstrap_resamples,
+                config.bootstrap_alpha,
                 derive_seed(seed, f"bs-surrogate-{index}"),
             )
         )
         held_rate.append(detection_rate(conf_h, config.threshold))
         held_ci.append(
             bootstrap_rate_interval(
-                conf_h, config.threshold, config.bootstrap_resamples, config.bootstrap_alpha,
+                conf_h,
+                config.threshold,
+                config.bootstrap_resamples,
+                config.bootstrap_alpha,
                 derive_seed(seed, f"bs-heldout-{index}"),
             )
         )

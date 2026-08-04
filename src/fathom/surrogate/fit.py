@@ -99,9 +99,18 @@ class SurrogateDistributions:
         kwargs = dict(data)
         kwargs["train_vessel_ids"] = tuple(kwargs["train_vessel_ids"])
         for key in (
-            "blade_count_choices", "electrical_hz_choices", "shaft_hz_range", "aux_hz_range",
-            "aux_count_range", "shaft_amp_range", "blade_amp_range", "electrical_amp_range",
-            "aux_amp_range", "rolloff_range", "width_hz_range", "wander_hz_range",
+            "blade_count_choices",
+            "electrical_hz_choices",
+            "shaft_hz_range",
+            "aux_hz_range",
+            "aux_count_range",
+            "shaft_amp_range",
+            "blade_amp_range",
+            "electrical_amp_range",
+            "aux_amp_range",
+            "rolloff_range",
+            "width_hz_range",
+            "wander_hz_range",
         ):
             if key in kwargs:
                 kwargs[key] = tuple(kwargs[key])
@@ -160,9 +169,7 @@ def draw_machinery(distributions: SurrogateDistributions, seed: int) -> Machiner
         generator.integers(distributions.aux_count_range[0], distributions.aux_count_range[1] + 1)
     )
     aux_hz = tuple(
-        sorted(
-            float(generator.uniform(*distributions.aux_hz_range)) for _ in range(aux_count)
-        )
+        sorted(float(generator.uniform(*distributions.aux_hz_range)) for _ in range(aux_count))
     )
     return MachineryParams(
         shaft_hz=float(generator.uniform(*distributions.shaft_hz_range)),

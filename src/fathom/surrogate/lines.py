@@ -87,8 +87,7 @@ def _harmonic_family(
     if count <= 0 or amplitude <= 0.0 or fundamental_hz <= 0.0:
         return []
     return [
-        (fundamental_hz * k, amplitude * rolloff ** (k - 1), family)
-        for k in range(1, count + 1)
+        (fundamental_hz * k, amplitude * rolloff ** (k - 1), family) for k in range(1, count + 1)
     ]
 
 
@@ -105,16 +104,26 @@ def build_lines(params: MachineryParams) -> LineSet:
     include_propulsion = not (params.quiet_mode and params.propulsion_absent)
     if include_propulsion:
         triples += _harmonic_family(
-            params.shaft_hz, params.shaft_harmonics, params.shaft_amp, params.harmonic_rolloff,
+            params.shaft_hz,
+            params.shaft_harmonics,
+            params.shaft_amp,
+            params.harmonic_rolloff,
             "shaft",
         )
         blade_hz = params.shaft_hz * params.blade_count
         triples += _harmonic_family(
-            blade_hz, params.blade_harmonics, params.blade_amp, params.harmonic_rolloff, "blade",
+            blade_hz,
+            params.blade_harmonics,
+            params.blade_amp,
+            params.harmonic_rolloff,
+            "blade",
         )
     triples += _harmonic_family(
-        params.electrical_hz, params.electrical_harmonics, params.electrical_amp,
-        params.harmonic_rolloff, "electrical",
+        params.electrical_hz,
+        params.electrical_harmonics,
+        params.electrical_amp,
+        params.harmonic_rolloff,
+        "electrical",
     )
     for aux in params.aux_hz:
         if aux > 0.0 and params.aux_amp > 0.0:
@@ -128,5 +137,6 @@ def build_lines(params: MachineryParams) -> LineSet:
     families = tuple(t[2] for t in triples)
     widths = np.full(freqs.shape, float(params.line_width_hz), dtype=np.float64)
     wanders = np.full(freqs.shape, float(params.wander_hz), dtype=np.float64)
-    return LineSet(freqs=freqs, amplitudes=amplitudes, widths=widths, wanders=wanders,
-                   families=families)
+    return LineSet(
+        freqs=freqs, amplitudes=amplitudes, widths=widths, wanders=wanders, families=families
+    )

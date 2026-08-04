@@ -46,7 +46,9 @@ def _pres(
     }
 
 
-def _audio_pair(vessel_id: str, snr: float, site: str = "stellwagen_sb01") -> tuple[dict, dict]:
+def _audio_pair(
+    vessel_id: str, snr: float, site: str = "stellwagen_sb01"
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """A stored audio object plus a quiet-tail presence backed by it, audible at the given SNR."""
     sha = f"audio-{vessel_id}"
     obj = _obj("sanctsound_sb01", site, 48000.0, sha=sha, duration=21600.0)
