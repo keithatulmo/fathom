@@ -420,6 +420,7 @@
       "wasserstein": 96.80486424284058
     }
   ],
+  "run_id": "e1-realdata-train14-held13-20260804",
   "seed": 20260804,
   "snr_ladder_db": [
     0.0,

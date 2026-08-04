@@ -524,13 +524,17 @@ def _cmd_e1_realdata(args: argparse.Namespace, repo_root: Path) -> int:
     )
     payload["fitted_distributions"] = distributions.to_dict()
     payload["seed"] = args.seed
+    # The run id is derived from content already in the payload (the fitted roster sizes and the
+    # seed), so it is deterministic, and it is written into the payload before hashing so the
+    # committed artifact self-identifies and is auditable from committed state alone.
+    run_id = f"e1-realdata-{ledger_latest_tag(payload)}-{args.seed}"
+    payload["run_id"] = run_id
 
     out_path = (repo_root / args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     blob_text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     out_path.write_text(blob_text, encoding="utf-8")
     artifact_hash = sha256_hex(blob_text.encode("utf-8"))
-    run_id = f"e1-realdata-{ledger_latest_tag(payload)}-{args.seed}"
     verdict = payload["verdict"]
     print(
         f"\nE1 real-data verdict: {'PASS' if verdict['passed'] else 'FAIL'} "
