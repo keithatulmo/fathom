@@ -228,11 +228,16 @@ def _ca3(
     else:
         # Both counts met; disjoint split assignment and its proof are still pending.
         verdict = MARGINAL
+    split_state = (
+        "split assigned, pairwise-disjoint"
+        if split_audit is not None and split_audit["disjoint"]
+        else "no vessel-level splits assigned yet"
+    )
     return CriterionScore(
         id="CA3",
         consumer="Vessel-level splits (SD3)",
         measured=f"{registry_total} distinct vessels total (need {VESSELS_TOTAL_MIN}); quiet-tail "
-        f"{quiet_tail} (need {QUIET_TAIL_TOTAL_MIN}); no vessel-level splits assigned yet",
+        f"{quiet_tail} (need {QUIET_TAIL_TOTAL_MIN}); {split_state}",
         threshold=f">={VESSELS_TOTAL_MIN} vessels total, >={QUIET_TAIL_TOTAL_MIN} quiet-tail total",
         binding="binding on the quiet subset",
         verdict=verdict,
