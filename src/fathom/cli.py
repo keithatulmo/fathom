@@ -732,6 +732,155 @@ def _cmd_e2(args: argparse.Namespace, repo_root: Path) -> int:
     return 0 if (selected is not None and not flip["fired"]) else 4
 
 
+def _gather_e3_backgrounds(
+    args: argparse.Namespace, repo_root: Path, config: object
+) -> tuple[
+    dict[str, list[npt.NDArray[np.float64]]],
+    dict[str, list[npt.NDArray[np.float64]]],
+    dict[str, list[str]],
+]:
+    """Gather train and eval backgrounds per regime, split at the recording level (the leak rule).
+
+    Within each regime the smallest objects are taken in a stable order; the first few become the
+    train-side backgrounds the learned detector trains on and the rest the eval backgrounds every
+    detector is scored on, and the two sets are disjoint objects, so the learned detector never sees
+    an eval recording.
+    """
+    from .ledger import Ledger
+
+    analysis_rate = float(config.analysis_rate_hz)  # type: ignore[attr-defined]
+    window_s = args.window_seconds
+    n_train = int(config.train_backgrounds_per_regime)  # type: ignore[attr-defined]
+    n_eval = int(config.eval_backgrounds_per_regime)  # type: ignore[attr-defined]
+    store = _open_store(args)
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    try:
+        candidates: dict[str, list[dict[str, object]]] = {r: [] for r in _E2_REGIMES}
+        for obj in ledger.get_corpus_objects():
+            regime = _regime_of(str(obj["source_id"]))
+            if regime in candidates and obj.get("raw_key") and _as_int(obj.get("byte_count")) > 0:
+                candidates[regime].append(obj)
+        train: dict[str, list[npt.NDArray[np.float64]]] = {r: [] for r in _E2_REGIMES}
+        eval_: dict[str, list[npt.NDArray[np.float64]]] = {r: [] for r in _E2_REGIMES}
+        sites: dict[str, list[str]] = {r: [] for r in _E2_REGIMES}
+        for regime in _E2_REGIMES:
+            ordered = sorted(candidates[regime], key=lambda o: _as_int(o.get("byte_count")))
+            for obj in ordered:
+                if len(train[regime]) >= n_train and len(eval_[regime]) >= n_eval:
+                    break
+                head = store.get_head(str(obj["raw_key"]), _E2_HEAD_BYTES)  # type: ignore[attr-defined]
+                window = _decode_head_1k(head, window_s, analysis_rate, skip_s=2.0)
+                if window is None:
+                    continue
+                bucket = train[regime] if len(train[regime]) < n_train else eval_[regime]
+                bucket.append(window)
+                if bucket is eval_[regime]:
+                    sites[regime].append(str(obj.get("site")))
+                role = "train" if bucket is train[regime] else "eval"
+                print(f"  {regime:8s} {role:5s} {str(obj['sha256'])[:12]} {obj['source_id']}")
+    finally:
+        ledger.close()
+    return train, eval_, sites
+
+
+def _save_e3_cache(
+    path: Path,
+    train: dict[str, list[npt.NDArray[np.float64]]],
+    eval_: dict[str, list[npt.NDArray[np.float64]]],
+    sites: dict[str, list[str]],
+) -> None:
+    """Cache the per-regime train and eval backgrounds as an npz plus a JSON sidecar (no pickle)."""
+    arrays: dict[str, npt.NDArray[np.float64]] = {}
+    meta: dict[str, object] = {"train_counts": {}, "eval_counts": {}, "sites": sites}
+    for name, group in (("train", train), ("eval", eval_)):
+        counts = meta[f"{name}_counts"]
+        assert isinstance(counts, dict)
+        for regime, windows in group.items():
+            counts[regime] = len(windows)
+            for index, window in enumerate(windows):
+                arrays[f"{name}_{regime}_{index}"] = np.asarray(window, dtype=np.float64)
+    np.savez(str(path), **arrays)  # type: ignore[arg-type]
+    path.with_suffix(".json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def _load_e3_cache(
+    path: Path,
+) -> tuple[
+    dict[str, list[npt.NDArray[np.float64]]],
+    dict[str, list[npt.NDArray[np.float64]]],
+    dict[str, list[str]],
+]:
+    """Load per-regime train and eval backgrounds from the :func:`_save_e3_cache` cache."""
+    data = np.load(path)  # allow_pickle is False by default, so this is safe
+    meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    groups = []
+    for name in ("train", "eval"):
+        groups.append(
+            {
+                regime: [data[f"{name}_{regime}_{i}"] for i in range(int(count))]
+                for regime, count in meta[f"{name}_counts"].items()
+            }
+        )
+    return groups[0], groups[1], meta["sites"]
+
+
+def _cmd_e3(args: argparse.Namespace, repo_root: Path) -> int:
+    from .config import E3Config
+    from .e3 import run_e3_bakeoff
+    from .surrogate.fit import SurrogateDistributions
+
+    config = E3Config()
+    cache_path = repo_root / ".fathom" / "e3_backgrounds.npz"
+    if cache_path.exists() and not args.refresh:
+        train, eval_, sites = _load_e3_cache(cache_path)
+        print(f"loaded cached backgrounds from {cache_path}")
+    else:
+        train, eval_, sites = _gather_e3_backgrounds(args, repo_root, config)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _save_e3_cache(cache_path, train, eval_, sites)
+    print(
+        "backgrounds: "
+        + ", ".join(f"{r}={len(train.get(r, []))}tr/{len(eval_.get(r, []))}ev" for r in _E2_REGIMES)
+    )
+
+    # The known-truth probe is the closed SD2 hybrid surrogate, from the committed E1 lineage; E3
+    # changes neither the front end nor the surrogate and reads no vessel split beyond the leak
+    # rule's train-side-only learned-detector training.
+    e1_lineage = json.loads(
+        (repo_root / "docs" / "e1_realdata_lineage.json").read_text(encoding="utf-8")
+    )
+    distributions = SurrogateDistributions.from_dict(e1_lineage["fitted_distributions"])
+
+    payload = run_e3_bakeoff(train, eval_, sites, distributions, config, args.seed)
+    tag = "q{}n{}b{}".format(
+        len(eval_.get("quiet", [])), len(eval_.get("nominal", [])), len(eval_.get("busy", []))
+    )
+    run_id = f"e3-detection-{tag}-{args.seed}"
+    payload["run_id"] = run_id
+    payload["seed"] = args.seed
+    payload["surrogate_probe_run_id"] = e1_lineage.get("run_id")
+
+    out_path = (repo_root / args.out).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    blob_text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    out_path.write_text(blob_text, encoding="utf-8")
+    artifact_hash = sha256_hex(blob_text.encode("utf-8"))
+
+    selected = payload["selected"]
+    flip = payload["flip_clause"]
+    if selected:
+        print(
+            f"\nE3 selected: {selected['name']}  "
+            f"operating-point sensitivity={selected['operating_point_sensitivity']:.2f}  "
+            f"4Hz-floor={selected['floor_4hz_sensitivity']:.2f}  "
+            f"FA-stable={selected['false_alarm_stable']}"
+        )
+    print(f"flip clause fired={flip['fired']} branch={flip['branch']}")
+    print(f"lineage: {out_path}  sha256={artifact_hash}")
+    print(f"run id: {run_id}")
+    return 0 if selected is not None else 4
+
+
 def _cmd_capture_audio(args: argparse.Namespace, repo_root: Path) -> int:
     import io
 
@@ -1168,6 +1317,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--refresh", action="store_true", help="Re-download and re-extract backgrounds, skip cache."
     )
 
+    e3 = sub.add_parser(
+        "e3", help="Run the E3 detection bake-off on the closed front end (closes SD5)."
+    )
+    e3.add_argument("--seed", type=int, default=20260805, help="Run seed.")
+    e3.add_argument(
+        "--window-seconds", type=float, default=96.0, help="Background window length per recording."
+    )
+    e3.add_argument(
+        "--out", default="docs/e3_detection_lineage.json", help="Committed lineage path."
+    )
+    e3.add_argument("--r2", action="store_true", help="Read audio from the R2 bucket (env).")
+    e3.add_argument("--local", help="Read audio from a local directory.")
+    e3.add_argument(
+        "--refresh", action="store_true", help="Re-download and re-extract backgrounds, skip cache."
+    )
+
     capaudio = sub.add_parser(
         "capture-audio", help="Measure and persist sample rate/duration from stored audio headers."
     )
@@ -1255,6 +1420,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_e1_realdata(args, repo_root)
     if args.command == "e2":
         return _cmd_e2(args, repo_root)
+    if args.command == "e3":
+        return _cmd_e3(args, repo_root)
     if args.command == "capture-audio":
         return _cmd_capture_audio(args, repo_root)
     if args.command == "audio-lineage":

@@ -1,0 +1,536 @@
+{
+  "analysis_rate_hz": 1000.0,
+  "band_hz": [
+    4.0,
+    150.0
+  ],
+  "candidates": [
+    {
+      "false_alarm_stable": true,
+      "floor_4hz_sensitivity": 0.06018518518518518,
+      "floor_threshold": 57.59844086341835,
+      "implementation_risk": "low",
+      "latency_s": 2.0,
+      "name": "cfar",
+      "operating_point_sensitivity": 0.0,
+      "operating_point_sensitivity_per_site": {
+        "busy": 0.0,
+        "nominal": 0.0,
+        "quiet": 0.0
+      },
+      "per_site_far": {
+        "busy": 0.05555555555555555,
+        "nominal": 0.027777777777777776,
+        "quiet": 0.06944444444444445
+      },
+      "sensitivity_curve": {
+        "busy": {
+          "0": 0.0,
+          "12": 0.0,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        },
+        "nominal": {
+          "0": 0.0,
+          "12": 0.013888888888888888,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        },
+        "quiet": {
+          "0": 0.0,
+          "12": 0.06944444444444445,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.027777777777777776
+        }
+      },
+      "soft_score": {
+        "graded": true,
+        "snr_calibration": 0.12005085097226817
+      },
+      "threshold": 704.6563273063013
+    },
+    {
+      "false_alarm_stable": false,
+      "floor_4hz_sensitivity": 0.009259259259259259,
+      "floor_threshold": 39.66782252510395,
+      "implementation_risk": "moderate",
+      "latency_s": 8.0,
+      "name": "integration",
+      "operating_point_sensitivity": 0.0,
+      "operating_point_sensitivity_per_site": {
+        "busy": 0.0,
+        "nominal": 0.0,
+        "quiet": 0.0
+      },
+      "per_site_far": {
+        "busy": 0.08333333333333333,
+        "nominal": 0.013888888888888888,
+        "quiet": 0.05555555555555555
+      },
+      "sensitivity_curve": {
+        "busy": {
+          "0": 0.0,
+          "12": 0.0,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        },
+        "nominal": {
+          "0": 0.0,
+          "12": 0.0,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        },
+        "quiet": {
+          "0": 0.0,
+          "12": 0.0,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        }
+      },
+      "soft_score": {
+        "graded": true,
+        "snr_calibration": -0.4146436341214981
+      },
+      "threshold": 401.95927277168965
+    },
+    {
+      "false_alarm_stable": true,
+      "floor_4hz_sensitivity": 0.5370370370370371,
+      "floor_threshold": 0.9999661139623438,
+      "implementation_risk": "high",
+      "latency_s": 8.0,
+      "name": "learned",
+      "operating_point_sensitivity": 0.9490740740740741,
+      "operating_point_sensitivity_per_site": {
+        "busy": 0.9305555555555556,
+        "nominal": 0.9305555555555556,
+        "quiet": 0.9861111111111112
+      },
+      "per_site_far": {
+        "busy": 0.041666666666666664,
+        "nominal": 0.041666666666666664,
+        "quiet": 0.06944444444444445
+      },
+      "sensitivity_curve": {
+        "busy": {
+          "0": 0.7083333333333334,
+          "12": 0.9861111111111112,
+          "3": 0.8333333333333334,
+          "6": 0.9305555555555556,
+          "9": 0.9722222222222222
+        },
+        "nominal": {
+          "0": 0.5416666666666666,
+          "12": 0.9444444444444444,
+          "3": 0.7361111111111112,
+          "6": 0.9305555555555556,
+          "9": 0.9583333333333334
+        },
+        "quiet": {
+          "0": 0.8888888888888888,
+          "12": 0.9583333333333334,
+          "3": 0.9444444444444444,
+          "6": 0.9861111111111112,
+          "9": 1.0
+        }
+      },
+      "soft_score": {
+        "graded": true,
+        "snr_calibration": 0.41302316526728905
+      },
+      "threshold": 0.4723274235374182
+    }
+  ],
+  "corpus_slice": {
+    "busy": {
+      "eval_backgrounds": 6,
+      "eval_subwindows": 72,
+      "sites": [
+        "strait_of_georgia",
+        "strait_of_georgia",
+        "strait_of_georgia",
+        "strait_of_georgia",
+        "strait_of_georgia",
+        "strait_of_georgia"
+      ],
+      "train_backgrounds": 2
+    },
+    "nominal": {
+      "eval_backgrounds": 6,
+      "eval_subwindows": 72,
+      "sites": [
+        "monterey_mb01",
+        "monterey_mb01",
+        "monterey_mb01",
+        "monterey_mb01",
+        "monterey_mb01",
+        "monterey_mb01"
+      ],
+      "train_backgrounds": 2
+    },
+    "quiet": {
+      "eval_backgrounds": 6,
+      "eval_subwindows": 72,
+      "sites": [
+        "adeon_atlantic",
+        "adeon_atlantic",
+        "adeon_atlantic",
+        "adeon_atlantic",
+        "adeon_atlantic",
+        "adeon_atlantic"
+      ],
+      "train_backgrounds": 2
+    }
+  },
+  "far_tolerance": 2.5,
+  "flip_clause": {
+    "branch": "none",
+    "fired": false,
+    "reason": "'learned' maximizes operating-point sensitivity while holding false-alarm stability across sites; the learned detector is selected with its implementation-risk cost named."
+  },
+  "floor_band_hz": [
+    4.0,
+    12.0
+  ],
+  "front_end": "res0.5Hz_ov0.75_int1_hann_split_window_hw6_g1_t3",
+  "injection_set": {
+    "fit_provenance": {
+      "amplitude_statistics": "train_audio",
+      "broadband_fit": {
+        "continuum_exponent_range": [
+          -0.6936843342830739,
+          0.0
+        ],
+        "leak_guard": "train_split_only; held-out and test raise ForbiddenSplitError",
+        "line_to_broadband_db_range": [
+          -11.68656160631609,
+          -1.5881870743229687
+        ],
+        "per_vessel": [
+          {
+            "continuum_exponent": -0.7107946652551216,
+            "line_to_broadband_db": -2.216003851204087,
+            "n_floor_bins": 145,
+            "vessel_id": "IMO7731153"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -13.01396262627857,
+            "n_floor_bins": 147,
+            "vessel_id": "IMO8853192"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -6.455002881610515,
+            "n_floor_bins": 144,
+            "vessel_id": "IMO8885573"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -4.511182683577461,
+            "n_floor_bins": 144,
+            "vessel_id": "IMO8973435"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -6.65084973869755,
+            "n_floor_bins": 145,
+            "vessel_id": "IMO9518775"
+          },
+          {
+            "continuum_exponent": -0.6537602286816292,
+            "line_to_broadband_db": -10.031815378866288,
+            "n_floor_bins": 148,
+            "vessel_id": "MMSI319052800-TOROA"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -1.8467540102122233,
+            "n_floor_bins": 144,
+            "vessel_id": "MMSI338192884-PRIORITY"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -12.395738560937435,
+            "n_floor_bins": 148,
+            "vessel_id": "MMSI338857000-PIPE_DREAMER"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -4.56253817779565,
+            "n_floor_bins": 144,
+            "vessel_id": "MMSI366764000-GULF_CHALLENGER"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -5.664875443632452,
+            "n_floor_bins": 146,
+            "vessel_id": "MMSI367045190-BALTIC_DAWN"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -1.4773726732275745,
+            "n_floor_bins": 140,
+            "vessel_id": "MMSI367615560-WARREN_JR"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -5.3292049594570665,
+            "n_floor_bins": 145,
+            "vessel_id": "MMSI367703980-HELGA_G"
+          },
+          {
+            "continuum_exponent": -2.7812046961645365,
+            "line_to_broadband_db": 0.0,
+            "n_floor_bins": 149,
+            "vessel_id": "MMSI367742810-JOHN_H_MARTIN"
+          },
+          {
+            "continuum_exponent": 0.0,
+            "line_to_broadband_db": -4.9993343938509565,
+            "n_floor_bins": 145,
+            "vessel_id": "MMSI367925000-CG_KEY_LARGO"
+          }
+        ],
+        "train_vessel_ids": [
+          "IMO7731153",
+          "IMO8853192",
+          "IMO8885573",
+          "IMO8973435",
+          "IMO9518775",
+          "MMSI319052800-TOROA",
+          "MMSI338192884-PRIORITY",
+          "MMSI338857000-PIPE_DREAMER",
+          "MMSI366764000-GULF_CHALLENGER",
+          "MMSI367045190-BALTIC_DAWN",
+          "MMSI367615560-WARREN_JR",
+          "MMSI367703980-HELGA_G",
+          "MMSI367742810-JOHN_H_MARTIN",
+          "MMSI367925000-CG_KEY_LARGO"
+        ]
+      },
+      "broadband_statistics": "train_audio",
+      "structural_ranges": "first_principles"
+    },
+    "probe": "closed_sd2_hybrid_surrogate"
+  },
+  "leak_rule": "learned detector trained on train-side backgrounds only, disjoint from eval",
+  "learned_detector": {
+    "bias": -0.02824161684170771,
+    "feature_mean": [
+      105.40377146617953,
+      19.699343119403554,
+      9.538005221850163,
+      3.124715168491988,
+      5.186302801409352,
+      27.929612756118708,
+      91.32463202999733,
+      0.4780600040838949,
+      0.23685860972550385
+    ],
+    "feature_names": [
+      "peak_max",
+      "p99",
+      "p95",
+      "mean",
+      "std",
+      "integrated_max",
+      "integrated_top5_sum",
+      "frac_above_2",
+      "frac_above_4"
+    ],
+    "feature_std": [
+      158.46807932914226,
+      7.930863337449497,
+      0.9740727616868918,
+      0.49971920762131133,
+      4.868033231953593,
+      45.490447296955466,
+      116.00378682249735,
+      0.013019039280441128,
+      0.015404178349187498
+    ],
+    "weights": [
+      0.22537874562726204,
+      0.5041051017974397,
+      -1.1881333342788492,
+      0.12822290633558672,
+      -0.03357604828390013,
+      -0.2426536504741288,
+      -0.2930604284092374,
+      2.849628340258876,
+      -0.7537796871097316
+    ]
+  },
+  "learned_material_margin": 0.1,
+  "operating_snr_db": 6.0,
+  "owner_certified": {
+    "confirmer_pd": null,
+    "detection_range_r": null
+  },
+  "run_id": "e3-detection-q6n6b6-20260805",
+  "runner_ups": [
+    {
+      "false_alarm_stable": true,
+      "floor_4hz_sensitivity": 0.06018518518518518,
+      "floor_threshold": 57.59844086341835,
+      "implementation_risk": "low",
+      "latency_s": 2.0,
+      "name": "cfar",
+      "operating_point_sensitivity": 0.0,
+      "operating_point_sensitivity_per_site": {
+        "busy": 0.0,
+        "nominal": 0.0,
+        "quiet": 0.0
+      },
+      "per_site_far": {
+        "busy": 0.05555555555555555,
+        "nominal": 0.027777777777777776,
+        "quiet": 0.06944444444444445
+      },
+      "sensitivity_curve": {
+        "busy": {
+          "0": 0.0,
+          "12": 0.0,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        },
+        "nominal": {
+          "0": 0.0,
+          "12": 0.013888888888888888,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        },
+        "quiet": {
+          "0": 0.0,
+          "12": 0.06944444444444445,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.027777777777777776
+        }
+      },
+      "soft_score": {
+        "graded": true,
+        "snr_calibration": 0.12005085097226817
+      },
+      "threshold": 704.6563273063013
+    },
+    {
+      "false_alarm_stable": false,
+      "floor_4hz_sensitivity": 0.009259259259259259,
+      "floor_threshold": 39.66782252510395,
+      "implementation_risk": "moderate",
+      "latency_s": 8.0,
+      "name": "integration",
+      "operating_point_sensitivity": 0.0,
+      "operating_point_sensitivity_per_site": {
+        "busy": 0.0,
+        "nominal": 0.0,
+        "quiet": 0.0
+      },
+      "per_site_far": {
+        "busy": 0.08333333333333333,
+        "nominal": 0.013888888888888888,
+        "quiet": 0.05555555555555555
+      },
+      "sensitivity_curve": {
+        "busy": {
+          "0": 0.0,
+          "12": 0.0,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        },
+        "nominal": {
+          "0": 0.0,
+          "12": 0.0,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        },
+        "quiet": {
+          "0": 0.0,
+          "12": 0.0,
+          "3": 0.0,
+          "6": 0.0,
+          "9": 0.0
+        }
+      },
+      "soft_score": {
+        "graded": true,
+        "snr_calibration": -0.4146436341214981
+      },
+      "threshold": 401.95927277168965
+    }
+  ],
+  "seed": 20260805,
+  "selected": {
+    "false_alarm_stable": true,
+    "floor_4hz_sensitivity": 0.5370370370370371,
+    "floor_threshold": 0.9999661139623438,
+    "implementation_risk": "high",
+    "latency_s": 8.0,
+    "name": "learned",
+    "operating_point_sensitivity": 0.9490740740740741,
+    "operating_point_sensitivity_per_site": {
+      "busy": 0.9305555555555556,
+      "nominal": 0.9305555555555556,
+      "quiet": 0.9861111111111112
+    },
+    "per_site_far": {
+      "busy": 0.041666666666666664,
+      "nominal": 0.041666666666666664,
+      "quiet": 0.06944444444444445
+    },
+    "sensitivity_curve": {
+      "busy": {
+        "0": 0.7083333333333334,
+        "12": 0.9861111111111112,
+        "3": 0.8333333333333334,
+        "6": 0.9305555555555556,
+        "9": 0.9722222222222222
+      },
+      "nominal": {
+        "0": 0.5416666666666666,
+        "12": 0.9444444444444444,
+        "3": 0.7361111111111112,
+        "6": 0.9305555555555556,
+        "9": 0.9583333333333334
+      },
+      "quiet": {
+        "0": 0.8888888888888888,
+        "12": 0.9583333333333334,
+        "3": 0.9444444444444444,
+        "6": 0.9861111111111112,
+        "9": 1.0
+      }
+    },
+    "soft_score": {
+      "graded": true,
+      "snr_calibration": 0.41302316526728905
+    },
+    "threshold": 0.4723274235374182
+  },
+  "snr_ladder_db": [
+    0.0,
+    3.0,
+    6.0,
+    9.0,
+    12.0
+  ],
+  "surrogate_probe_run_id": "e1-realdata-hybrid-train14-held13-20260804",
+  "target_far": 0.05,
+  "verdict": {
+    "closes_sd5_on_measurement": true,
+    "note": "SD5 closes on the detector that maximizes operating-point sensitivity subject to holding false-alarm stability across sites. A candidate that wins sensitivity but fails cross-site false-alarm stability does not close SD5 on sensitivity alone; the selection falls to the one that holds both (flip). Provisional until the SD6 rejector consumes the detector's soft scores.",
+    "selected_detector": "learned"
+  }
+}

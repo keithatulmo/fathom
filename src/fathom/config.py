@@ -281,6 +281,58 @@ class E2Config(_Frozen):
     owner_certified: OwnerCertifiedFigures = OwnerCertifiedFigures()
 
 
+class E3Config(_Frozen):
+    """Configuration of the E3 detection bake-off that closes SD5.
+
+    Three detectors run on the closed SD4 front end: constant-false-alarm-rate peak-picking, line
+    and
+    harmonic integration, and a bounded learned detector trained train-side only. The closed hybrid
+    surrogate is injected across the signal-to-noise ladder onto real background from each site;
+    sensitivity is the detection rate at a fixed false-alarm rate at the operating point and at the
+    four-hertz floor, and false-alarm stability is whether one threshold holds the false-alarm rate
+    across sites. The operating point and threshold are set once across sites, never per site. The
+    learned detector trains on train-side backgrounds only (the leak rule), disjoint from the eval
+    backgrounds it is scored on. No absolute level appears; the owner-certified figures remain
+    unset.
+    """
+
+    band_low_hz: float = 4.0
+    band_high_hz: float = 150.0
+    floor_band_low_hz: float = 4.0
+    floor_band_high_hz: float = 12.0
+    analysis_rate_hz: float = 1000.0
+
+    snr_ladder_db: tuple[float, ...] = (0.0, 3.0, 6.0, 9.0, 12.0)
+    operating_snr_db: float = 6.0
+    subwindow_seconds: float = 8.0
+    dwell_frames: int = 12
+    target_far: float = 0.05
+    far_tolerance: float = 2.5
+    # Enough eval backgrounds per regime that the per-site false-alarm rate is measured robustly,
+    # not spuriously read as zero from a small sample; the learned detector's cross-site
+    # false-alarm stability turns on this measurement.
+    eval_backgrounds_per_regime: int = 6
+    train_backgrounds_per_regime: int = 2
+    max_subwindows_per_background: int = 12
+    # The learned detector carries the highest implementation risk and the false-alarm-stability
+    # exposure, so it is selected over hand-built integration only when it beats it at the operating
+    # point by at least this margin (SD5 memo Section 6); otherwise integration is selected and the
+    # learned detector's ceiling is the runner-up. A proof-scope threshold recorded in lineage.
+    learned_material_margin: float = 0.1
+
+    # Injection kinematic and propagation proxies, dimensionless, as in E1 and E2.
+    bearing0_deg: float = 90.0
+    closest_proxy: float = 1.0
+    speed_proxy: float = 0.5
+    doppler_peak: float = 0.02
+    t_cpa_fraction: float = 0.5
+    absorption_coeff: float = 0.001
+    multipath_depth: float = 0.3
+    multipath_spacing_hz: float = 90.0
+    spreading_exponent: float = 1.0
+    owner_certified: OwnerCertifiedFigures = OwnerCertifiedFigures()
+
+
 class AuditConfig(_Frozen):
     """Configuration of the split-integrity audit.
 

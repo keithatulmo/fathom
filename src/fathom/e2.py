@@ -16,7 +16,7 @@ and the object store, and it asserts no absolute level.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import numpy.typing as npt
@@ -69,12 +69,47 @@ def build_grid(config: E2Config) -> list[FrontEndParams]:
     return grid
 
 
+class HybridProbeConfig(Protocol):
+    """The configuration fields the hybrid-surrogate probe needs, shared by E2 and E3.
+
+    Declaring it structurally lets E3 reuse the probe with its own configuration without importing
+    or
+    constructing an E2 configuration, so the injection truth is one code path across both bake-offs.
+    The members are read-only properties so a frozen pydantic configuration satisfies the protocol.
+    """
+
+    @property
+    def analysis_rate_hz(self) -> float: ...
+    @property
+    def band_low_hz(self) -> float: ...
+    @property
+    def band_high_hz(self) -> float: ...
+    @property
+    def bearing0_deg(self) -> float: ...
+    @property
+    def closest_proxy(self) -> float: ...
+    @property
+    def speed_proxy(self) -> float: ...
+    @property
+    def doppler_peak(self) -> float: ...
+    @property
+    def t_cpa_fraction(self) -> float: ...
+    @property
+    def absorption_coeff(self) -> float: ...
+    @property
+    def multipath_depth(self) -> float: ...
+    @property
+    def multipath_spacing_hz(self) -> float: ...
+    @property
+    def spreading_exponent(self) -> float: ...
+
+
 def synth_hybrid_probe(
-    distributions: SurrogateDistributions, config: E2Config, n: int, seed: int
+    distributions: SurrogateDistributions, config: HybridProbeConfig, n: int, seed: int
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Synthesize one closed hybrid surrogate; return the signal and its ground-truth line set."""
     rate = config.analysis_rate_hz
-    band = _band(config)
+    band = (config.band_low_hz, config.band_high_hz)
     machinery = draw_machinery(distributions, derive_seed(seed, "m"))
     lines = build_lines(machinery)
     propagation = PropagationParams(
