@@ -33,31 +33,37 @@ def _candidate(config: dict[str, Any]) -> bool:
     )
 
 
-def _sep(config: dict[str, Any]) -> float:
-    return float(config["separability"]["separability_db"])
+def _sep(config: dict[str, Any], regime: str) -> float:
+    # The objective is separability at the operating-point site (WO-7), not the site-average.
+    per_regime = config["separability"].get("per_regime_db", {})
+    value = per_regime.get(regime)
+    return float(value) if value is not None else float(config["separability"]["separability_db"])
 
 
-def _best(configs: list[dict[str, Any]]) -> dict[str, Any]:
-    return max(configs, key=_sep)
+def _best(configs: list[dict[str, Any]], regime: str) -> dict[str, Any]:
+    return max(configs, key=lambda c: _sep(c, regime))
 
 
 def _rederive(lineage: dict[str, Any]) -> tuple[str | None, bool, int]:
     """Return the re-derived (selected_key, flip_fired, flip_branch) from the per-config numbers."""
     per_config = lineage["per_config"]
     floor = float(lineage["separability_floor_db"])
+    regime = str(lineage.get("operating_point_regime", "quiet"))
     candidates = [c for c in per_config if _candidate(c)]
     if not candidates:
         holds_any = any(c["flatness"]["flatness_holds"] for c in per_config)
         return None, True, (0 if holds_any else 3)
-    hann_adequate = [c for c in candidates if c["params"]["taper"] == "hann" and _sep(c) >= floor]
+    hann_adequate = [
+        c for c in candidates if c["params"]["taper"] == "hann" and _sep(c, regime) >= floor
+    ]
     if hann_adequate:
-        return _best(hann_adequate)["key"], False, 0
+        return _best(hann_adequate, regime)["key"], False, 0
     mt_adequate = [
-        c for c in candidates if c["params"]["taper"] == "multitaper" and _sep(c) >= floor
+        c for c in candidates if c["params"]["taper"] == "multitaper" and _sep(c, regime) >= floor
     ]
     if mt_adequate:
-        return _best(mt_adequate)["key"], True, 1
-    return _best(candidates)["key"], True, 2
+        return _best(mt_adequate, regime)["key"], True, 1
+    return _best(candidates, regime)["key"], True, 2
 
 
 def _check(lineage: dict[str, Any]) -> list[str]:
@@ -94,8 +100,10 @@ def main() -> int:
 
     selected = lineage.get("selected")
     flip = lineage["flip_clause"]
+    regime = str(lineage.get("operating_point_regime", "quiet"))
     print(f"lineage: {path}")
     print(f"run id:  {lineage.get('run_id')}  (seed {lineage.get('seed')})")
+    print(f"objective: {lineage.get('selection_objective', 'site_averaged')} ({regime} site)")
     print(
         f"configs: {len(lineage['per_config'])}  candidates: "
         f"{sum(1 for c in lineage['per_config'] if c['candidate'])}"
@@ -103,7 +111,8 @@ def main() -> int:
     if selected:
         print(
             f"selected: {selected['key']}  "
-            f"separability={selected['separability']['separability_db']:.2f} dB"
+            f"{regime}-site separability={_sep(selected, regime):.2f} dB "
+            f"(site-avg {selected['separability']['separability_db']:.2f})"
         )
     print(f"flip: fired={flip['fired']} branch={flip['branch']}")
     print(f"closes SD4 on measurement: {lineage['verdict']['closes_sd4_on_measurement']}")

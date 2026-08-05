@@ -1,11 +1,11 @@
 {
   "analysis_rate_hz": 1000.0,
   "band_endpoint_finding": {
-    "high_150hz_recovered_db": 10.460504163621053,
+    "high_150hz_recovered_db": 10.844986445730035,
     "high_endpoint_holds": true,
-    "low_4hz_recovered_db": 9.155980103258766,
+    "low_4hz_recovered_db": 8.774115236583828,
     "low_endpoint_holds": true,
-    "mid_recovered_db": 10.44481835041206,
+    "mid_recovered_db": 10.17387358871509,
     "note": "Feedback to the design-assumptions band entry; the owner rules on any band change. An endpoint holds when its recovered comb prominence is within 3 dB of the mid band."
   },
   "band_hz": [
@@ -190,6 +190,7 @@
     },
     "probe": "closed_sd2_hybrid_surrogate"
   },
+  "operating_point_regime": "quiet",
   "operating_snr_db": 6.0,
   "owner_certified": {
     "confirmer_pd": null,
@@ -2227,24 +2228,48 @@
   "run_id": "e2-frontend-q3n3b3-20260804",
   "runner_ups": [
     {
-      "flatness_score": 0.7584974951599703,
-      "key": "res0.5Hz_ov0.75_int1_hann_split_window_hw6_g1_t3",
-      "separability_db": 10.210489001019061
+      "flatness_score": 0.9380173394531404,
+      "key": "res0.5Hz_ov0.50_int1_hann_temporal_median_hw6_g1_t3",
+      "operating_separability_db": 9.985832270972125,
+      "per_regime_db": {
+        "busy": 10.253319484548957,
+        "nominal": 9.790006855935555,
+        "quiet": 9.985832270972125
+      },
+      "site_averaged_separability_db": 9.982864074564386
+    },
+    {
+      "flatness_score": 0.9267399267399268,
+      "key": "res0.25Hz_ov0.50_int1_hann_temporal_median_hw6_g1_t3",
+      "operating_separability_db": 9.94059893822881,
+      "per_regime_db": {
+        "busy": 11.909213051916117,
+        "nominal": 10.243611712933163,
+        "quiet": 9.94059893822881
+      },
+      "site_averaged_separability_db": 10.452109809495202
     },
     {
       "flatness_score": 0.940065421546903,
       "key": "res0.25Hz_ov0.75_int1_hann_temporal_median_hw6_g1_t3",
-      "separability_db": 10.098658383231879
+      "operating_separability_db": 9.663858095833982,
+      "per_regime_db": {
+        "busy": 10.780776217160678,
+        "nominal": 9.567607180160273,
+        "quiet": 9.663858095833982
+      },
+      "site_averaged_separability_db": 10.098658383231879
     },
     {
-      "flatness_score": 0.8954472008364225,
-      "key": "res0.125Hz_ov0.75_int1_hann_temporal_median_hw6_g1_t3",
-      "separability_db": 10.07702202939902
-    },
-    {
-      "flatness_score": 0.9380173394531404,
-      "key": "res0.5Hz_ov0.50_int1_hann_temporal_median_hw6_g1_t3",
-      "separability_db": 9.982864074564386
+      "flatness_score": 0.7661919893295673,
+      "key": "res0.5Hz_ov0.50_int1_hann_split_window_hw6_g1_t3",
+      "operating_separability_db": 9.605939175748272,
+      "per_regime_db": {
+        "busy": 10.09195310350481,
+        "nominal": 9.487111374323849,
+        "quiet": 9.605939175748272
+      },
+      "site_averaged_separability_db": 9.747935366894275
     }
   ],
   "seed": 20260804,
@@ -2252,50 +2277,51 @@
     "candidate": true,
     "constraints": {
       "compute_cleared": true,
-      "compute_cost_proxy": 23931.568569324176,
+      "compute_cost_proxy": 43863.13713864835,
       "determinism_cleared": true
     },
     "flatness": {
-      "background_cv_median": 0.3277076522786865,
-      "far_spread": 0.003663003663003664,
+      "background_cv_median": 0.6603639384254565,
+      "far_spread": 0.01207512524200148,
       "flatness_holds": true,
-      "flatness_score": 0.9267399267399268,
+      "flatness_score": 0.7584974951599703,
       "per_regime_far": {
-        "busy": 0.04765974765974766,
-        "nominal": 0.05103785103785104,
-        "quiet": 0.051322751322751325
+        "busy": 0.050156677244875554,
+        "nominal": 0.0438895874498533,
+        "quiet": 0.05596471269185478
       },
-      "single_threshold": 4.811467528129724
+      "single_threshold": 9.651062239751948
     },
-    "key": "res0.25Hz_ov0.50_int1_hann_temporal_median_hw6_g1_t3",
+    "key": "res0.5Hz_ov0.75_int1_hann_split_window_hw6_g1_t3",
     "params": {
       "integration_count": 1,
       "n_tapers": 5,
-      "normalizer": "temporal_median",
+      "normalizer": "split_window",
       "nw": 3.0,
-      "overlap": 0.5,
+      "overlap": 0.75,
       "sw_guard_hz": 1.0,
       "sw_half_window_hz": 6.0,
       "sw_truncation": 3,
       "taper": "hann",
       "tm_window_frames": 8,
-      "window_length_s": 4.0
+      "window_length_s": 2.0
     },
     "separability": {
       "per_regime_db": {
-        "busy": 11.909213051916117,
-        "nominal": 10.243611712933163,
-        "quiet": 9.94059893822881
+        "busy": 10.294760492115568,
+        "nominal": 10.193139939990814,
+        "quiet": 10.196283411684735
       },
-      "separability_db": 10.452109809495202
+      "separability_db": 10.210489001019061
     }
   },
+  "selection_objective": "operating_point_separability_subject_to_flatness",
   "separability_floor_db": 6.0,
   "surrogate_probe_run_id": "e1-realdata-hybrid-train14-held13-20260804",
   "target_far": 0.05,
   "verdict": {
     "closes_sd4_on_measurement": true,
-    "note": "SD4 closes on the selection when a Hann default reaches operating-point separability with cross-site flatness; a fired flip clause is reported for E&P to rule on. The selection is provisional under the placeholder detector until SD5.",
-    "selected_key": "res0.25Hz_ov0.50_int1_hann_temporal_median_hw6_g1_t3"
+    "note": "SD4 closes on the selection when a Hann default reaches operating-point (quiet-site) separability with cross-site flatness; a fired flip is reported for E&P to rule on. The selection is the quiet-site operating-point argmax under flatness (WO-7), not the site-averaged argmax; temporal-median stays the site-averaged runner-up with its per-site numbers. Provisional under the placeholder detector until SD5; E3 on this closed front end confirms it and is the one measured basis to revisit the normalizer.",
+    "selected_key": "res0.5Hz_ov0.75_int1_hann_split_window_hw6_g1_t3"
   }
 }

@@ -716,9 +716,14 @@ def _cmd_e2(args: argparse.Namespace, repo_root: Path) -> int:
     selected = payload["selected"]
     flip = payload["flip_clause"]
     if selected:
+        regime = payload["operating_point_regime"]
+        op_sep = selected["separability"]["per_regime_db"].get(
+            regime, selected["separability"]["separability_db"]
+        )
         print(
             f"\nE2 selected: {selected['key']}  "
-            f"separability={selected['separability']['separability_db']:.2f} dB  "
+            f"{regime}-site separability={op_sep:.2f} dB "
+            f"(site-avg {selected['separability']['separability_db']:.2f})  "
             f"flatness_holds={selected['flatness']['flatness_holds']}"
         )
     print(f"flip clause fired={flip['fired']} branch={flip['branch']}")

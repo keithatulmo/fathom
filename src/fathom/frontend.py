@@ -60,6 +60,33 @@ class FrontEndParams:
         )
 
 
+def closed_front_end() -> FrontEndParams:
+    """The SD4-closed production front end (SD4 close v1.0 / WO-7).
+
+    A linear-frequency Hann short-time Fourier gram at half-hertz resolution from a two-second
+    three-quarters overlap, unit incoherent integration, and a two-pass split-window
+    order-truncated-average normalizer with a six-hertz half-window, a one-hertz guard, and a
+    truncation order of three. This is the configuration the E2 sweep selects under the quiet-site
+    operating-point objective: the best separator at the operating point (about 10.2 dB) and
+    site-invariant to a tenth of a decibel across the quiet, nominal, and busy sites. The WO-3
+    reference front end stays available unchanged for comparison; this is the default the detection
+    and tracking layers build on.
+    """
+    return FrontEndParams(
+        window_length_s=2.0,
+        overlap=0.75,
+        integration_count=1,
+        taper="hann",
+        n_tapers=5,
+        nw=3.0,
+        normalizer="split_window",
+        sw_half_window_hz=6.0,
+        sw_guard_hz=1.0,
+        sw_truncation=3,
+        tm_window_frames=8,
+    )
+
+
 def _hann(nfft: int) -> npt.NDArray[np.float64]:
     """Periodic Hann window, defined here so the transform seam stays explicit (SD10 Section 7)."""
     n = np.arange(nfft, dtype=np.float64)

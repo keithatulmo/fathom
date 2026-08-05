@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -86,6 +87,45 @@ def test_sweep_selects_holds_flatness_and_asserts_no_absolute_level() -> None:
     # A selection (or a fired flip clause) is always rendered.
     assert payload["selected"] is not None or payload["flip_clause"]["fired"]
     assert "reference_baseline" in payload and "band_endpoint_finding" in payload
+
+
+def test_closed_front_end_is_the_split_window_config() -> None:
+    from fathom.frontend import closed_front_end
+
+    params = closed_front_end()
+    # The SD4-closed default is the split-window config the operating-point objective picks.
+    assert params.key() == "res0.5Hz_ov0.75_int1_hann_split_window_hw6_g1_t3"
+    assert params.normalizer == "split_window"
+    assert params.taper == "hann"
+    assert abs(1.0 / params.window_length_s - 0.5) < 1e-9
+
+
+def test_operating_point_objective_prefers_the_operating_site() -> None:
+    from fathom.e2 import _select_and_flip, operating_separability
+
+    def row(key: str, quiet: float, nominal: float, busy: float) -> dict[str, Any]:
+        avg = float(np.median([quiet, nominal, busy]))
+        return {
+            "key": key,
+            "params": {"taper": "hann"},
+            "candidate": True,
+            "separability": {
+                "separability_db": avg,
+                "per_regime_db": {"quiet": quiet, "nominal": nominal, "busy": busy},
+            },
+            "flatness": {"flatness_holds": True, "flatness_score": 0.9},
+            "constraints": {"compute_cleared": True, "determinism_cleared": True},
+        }
+
+    # A wins the site-average by manufacturing its lead at the busy site; B wins the quiet operating
+    # point. The corrected objective must select B, not the site-averaged argmax A.
+    site_avg_winner = row("A_siteavg", quiet=9.9, nominal=10.5, busy=11.9)
+    operating_winner = row("B_quiet", quiet=10.3, nominal=10.2, busy=10.1)
+    config = E2Config(operating_point_regime="quiet")
+    selected, flip = _select_and_flip([site_avg_winner, operating_winner], config)
+    assert selected is not None and selected["key"] == "B_quiet"
+    assert flip["fired"] is False
+    assert operating_separability(site_avg_winner, "quiet") == 9.9
 
 
 def test_committed_lineage_passes_the_stdlib_verifier(tmp_path: Path) -> None:

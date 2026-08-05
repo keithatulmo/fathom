@@ -342,28 +342,45 @@ def band_endpoint_finding(
     }
 
 
+def operating_separability(config_row: dict[str, Any], operating_point_regime: str) -> float:
+    """The separability at the operating-point site, the quantity the WO-7 objective maximizes.
+
+    The proof runs at the quiet-site operating point, so the selection reads separability at that
+    site rather than the site-average that equal-weights a quiet, a nominal, and a busy site (SD4
+    close v1.0). It falls back to the site-averaged value only if the per-site number is absent.
+    """
+    per_regime = config_row["separability"].get("per_regime_db", {})
+    value = per_regime.get(operating_point_regime)
+    if value is None:
+        return float(config_row["separability"]["separability_db"])
+    return float(value)
+
+
 def _select_and_flip(
     per_config: list[dict[str, Any]], config: E2Config
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Select the closing configuration and evaluate the ordered SD4 flip clause.
 
-    The selection follows the SD4 memo: Hann is the default and a configuration is adequate when its
-    recovered separability reaches the floor with cross-site flatness holding at bounded compute and
-    determinism. If a Hann config is adequate, the best such Hann config is selected and
-    the flip does not fire. If no single-taper config is adequate, the multitaper arm is adopted
-    (branch one). If even multitaper falls short, the dwell is flagged for revisit before resolution
-    (branch two), and the best available candidate is selected provisionally. If no config holds
-    cross-site flatness at all, that is a nonstationarity routed to the data thread (branch
+    The objective is quiet-site operating-point separability subject to flatness (WO-7): the proof
+    runs at the quiet-site operating point, so the selection maximizes separability there, not the
+    site-average. The selection then follows the SD4 memo: Hann is the default and a config is
+    adequate when its operating-point separability reaches the floor with cross-site flatness
+    at bounded compute and determinism. If a Hann config is adequate, the best such Hann config is
+    selected and the flip does not fire. If no single-taper config is adequate, the multitaper is
+    adopted (branch one). If even multitaper falls short, the dwell is flagged for revisit before
+    resolution (branch two), and the best candidate is selected provisionally. If no config
+    holds cross-site flatness at all, that is a nonstationarity routed to the data thread (branch
     three) and nothing is selected.
     """
     candidates = [c for c in per_config if c["candidate"]]
     floor = config.separability_floor_db
+    regime = config.operating_point_regime
 
     def best(cands: list[dict[str, Any]]) -> dict[str, Any]:
-        return max(cands, key=lambda c: c["separability"]["separability_db"])
+        return max(cands, key=lambda c: operating_separability(c, regime))
 
     def reaches(c: dict[str, Any]) -> bool:
-        return bool(c["separability"]["separability_db"] >= floor)
+        return bool(operating_separability(c, regime) >= floor)
 
     if not candidates:
         holds_any = any(c["flatness"]["flatness_holds"] for c in per_config)
@@ -466,13 +483,15 @@ def run_e2_sweep(
     selected, flip = _select_and_flip(per_config, config)
     ranked = sorted(
         (c for c in per_config if c["candidate"]),
-        key=lambda c: c["separability"]["separability_db"],
+        key=lambda c: operating_separability(c, config.operating_point_regime),
         reverse=True,
     )
     runner_ups = [
         {
             "key": c["key"],
-            "separability_db": c["separability"]["separability_db"],
+            "operating_separability_db": operating_separability(c, config.operating_point_regime),
+            "per_regime_db": c["separability"]["per_regime_db"],
+            "site_averaged_separability_db": c["separability"]["separability_db"],
             "flatness_score": c["flatness"]["flatness_score"],
         }
         for c in ranked
@@ -490,6 +509,8 @@ def run_e2_sweep(
         "target_far": config.target_far,
         "far_tolerance": config.far_tolerance,
         "separability_floor_db": config.separability_floor_db,
+        "selection_objective": "operating_point_separability_subject_to_flatness",
+        "operating_point_regime": config.operating_point_regime,
         "band_hz": list(band),
         "analysis_rate_hz": rate,
         "corpus_slice": {
@@ -523,8 +544,12 @@ def run_e2_sweep(
             "closes_sd4_on_measurement": bool(selected is not None and not flip["fired"]),
             "note": (
                 "SD4 closes on the selection when a Hann default reaches operating-point "
-                "separability with cross-site flatness; a fired flip clause is reported for E&P to "
-                "rule on. The selection is provisional under the placeholder detector until SD5."
+                "(quiet-site) separability with cross-site flatness; a fired flip is reported "
+                "for E&P to rule on. The selection is the quiet-site operating-point argmax under "
+                "flatness (WO-7), not the site-averaged argmax; temporal-median stays the "
+                "site-averaged runner-up with its per-site numbers. Provisional under the "
+                "placeholder detector until SD5; E3 on this closed front end confirms it and is "
+                "the one measured basis to revisit the normalizer."
             ),
         },
         "owner_certified": config.owner_certified.model_dump(mode="json"),

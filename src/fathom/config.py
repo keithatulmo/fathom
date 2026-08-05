@@ -258,6 +258,12 @@ class E2Config(_Frozen):
     far_tolerance: float = 2.5
     separability_floor_db: float = 6.0
     backgrounds_per_regime: int = 3
+    # The site whose separability the selection maximizes (WO-7 / SD4 close v1.0). The proof runs at
+    # the quiet-site operating point, so the selection objective is quiet-site operating-point
+    # separability subject to flatness, not the site-average that equal-weights a quiet, a nominal,
+    # and a busy site; the site-averaged objective is manufactured by the busy clutter regime the
+    # is not staged at.
+    operating_point_regime: str = "quiet"
 
     # Constraints.
     compute_budget_proxy: float = 150000.0
