@@ -65,6 +65,14 @@ class ObjectStore(ABC):
         """Return the bytes stored at the given key."""
 
     @abstractmethod
+    def get_head(self, key: str, n_bytes: int) -> bytes:
+        """Return the first ``n_bytes`` of an object, a range read for streamable formats.
+
+        A streamable codec such as FLAC decodes its leading frames from the head of the file, so a
+        window near the start can be extracted without downloading a multi-hour object in full.
+        """
+
+    @abstractmethod
     def list(self, prefix: str) -> list[str]:
         """Return the keys present under the given prefix, sorted."""
 
@@ -102,6 +110,10 @@ class LocalObjectStore(ObjectStore):
 
     def get_bytes(self, key: str) -> bytes:
         return self._path(key).read_bytes()
+
+    def get_head(self, key: str, n_bytes: int) -> bytes:
+        with self._path(key).open("rb") as handle:
+            return handle.read(n_bytes)
 
     def list(self, prefix: str) -> list[str]:
         base = self._root
@@ -183,6 +195,13 @@ class R2ObjectStore(ObjectStore):
 
     def get_bytes(self, key: str) -> bytes:
         response = self._client.get_object(Bucket=self._bucket, Key=key)
+        body: bytes = response["Body"].read()
+        return body
+
+    def get_head(self, key: str, n_bytes: int) -> bytes:
+        response = self._client.get_object(
+            Bucket=self._bucket, Key=key, Range=f"bytes=0-{max(0, n_bytes - 1)}"
+        )
         body: bytes = response["Body"].read()
         return body
 

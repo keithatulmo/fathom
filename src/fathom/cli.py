@@ -554,6 +554,179 @@ def ledger_latest_tag(payload: dict[str, object]) -> str:
     return f"train{payload.get('train_vessel_count')}-held{payload.get('held_out_vessel_count')}"
 
 
+_E2_REGIMES = ("quiet", "nominal", "busy")
+_E2_HEAD_BYTES = 48 * 1024 * 1024  # a range read of the head; a FLAC decodes its leading frames
+
+
+def _as_int(value: object) -> int:
+    """Coerce a ledger dict value to int, treating missing or non-numeric values as zero."""
+    return int(value) if isinstance(value, (int, float, str)) and str(value).strip() else 0
+
+
+def _regime_of(source_id: str) -> str | None:
+    """Map a source to its site regime for E2: quiet (family 1), nominal (family 2), or busy."""
+    from .corpus.sources import FIRST_WAVE
+
+    spec = {s.source_id: s for s in FIRST_WAVE}.get(source_id)
+    if spec is None:
+        return None
+    if spec.role.startswith("busy"):
+        return "busy"
+    return {1: "quiet", 2: "nominal"}.get(spec.family)
+
+
+def _decode_head_1k(
+    head_blob: bytes, window_s: float, analysis_rate: float, skip_s: float
+) -> npt.NDArray[np.float64] | None:
+    """Decode a mono window near the start of a (possibly head-only) blob, decimated to 1 kHz."""
+    import io
+
+    import soundfile as sf
+
+    from .corpus.decimate import decimate
+
+    try:
+        with sf.SoundFile(io.BytesIO(head_blob)) as handle:
+            rate = float(handle.samplerate)
+            skip = int(skip_s * rate)
+            want = int(window_s * rate)
+            try:
+                handle.seek(skip)
+            except Exception:
+                handle.seek(0)
+            data = handle.read(want, dtype="float64", always_2d=True)
+    except Exception:
+        return None
+    if data.shape[0] < int(0.5 * window_s * rate):
+        return None
+    mono = np.ascontiguousarray(data[:, 0], dtype=np.float64)
+    return np.asarray(decimate(mono[np.newaxis, :], rate, target_rate=analysis_rate).samples[0])
+
+
+def _gather_e2_backgrounds(
+    args: argparse.Namespace, repo_root: Path, config: object
+) -> tuple[dict[str, list[npt.NDArray[np.float64]]], dict[str, list[str]]]:
+    """Gather real background windows from the quiet, nominal, and busy site regimes."""
+    from .ledger import Ledger
+
+    analysis_rate = float(config.analysis_rate_hz)  # type: ignore[attr-defined]
+    window_s = args.window_seconds
+    per_regime = int(config.backgrounds_per_regime)  # type: ignore[attr-defined]
+    store = _open_store(args)
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    try:
+        # Group candidate objects by regime, preferring the smallest so a head read is light.
+        candidates: dict[str, list[dict[str, object]]] = {r: [] for r in _E2_REGIMES}
+        for obj in ledger.get_corpus_objects():
+            regime = _regime_of(str(obj["source_id"]))
+            if regime in candidates and obj.get("raw_key") and _as_int(obj.get("byte_count")) > 0:
+                candidates[regime].append(obj)
+        backgrounds: dict[str, list[npt.NDArray[np.float64]]] = {r: [] for r in _E2_REGIMES}
+        sites: dict[str, list[str]] = {r: [] for r in _E2_REGIMES}
+        for regime in _E2_REGIMES:
+            ordered = sorted(candidates[regime], key=lambda o: _as_int(o.get("byte_count")))
+            for obj in ordered:
+                if len(backgrounds[regime]) >= per_regime:
+                    break
+                head = store.get_head(str(obj["raw_key"]), _E2_HEAD_BYTES)  # type: ignore[attr-defined]
+                window = _decode_head_1k(head, window_s, analysis_rate, skip_s=2.0)
+                if window is None:
+                    continue
+                backgrounds[regime].append(window)
+                sites[regime].append(str(obj.get("site")))
+                sha = str(obj["sha256"])[:12]
+                print(f"  {regime:8s} {sha} {obj['source_id']}: {window.shape[0]} samples")
+    finally:
+        ledger.close()
+    return backgrounds, sites
+
+
+def _save_e2_cache(
+    path: Path,
+    backgrounds: dict[str, list[npt.NDArray[np.float64]]],
+    sites: dict[str, list[str]],
+) -> None:
+    """Cache the per-regime backgrounds as an npz of arrays plus a JSON sidecar (no pickle)."""
+    arrays: dict[str, npt.NDArray[np.float64]] = {}
+    meta: dict[str, object] = {"counts": {}, "sites": sites}
+    counts = meta["counts"]
+    assert isinstance(counts, dict)
+    for regime, windows in backgrounds.items():
+        counts[regime] = len(windows)
+        for index, window in enumerate(windows):
+            arrays[f"{regime}_{index}"] = np.asarray(window, dtype=np.float64)
+    np.savez(str(path), **arrays)  # type: ignore[arg-type]
+    path.with_suffix(".json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def _load_e2_cache(
+    path: Path,
+) -> tuple[dict[str, list[npt.NDArray[np.float64]]], dict[str, list[str]]]:
+    """Load per-regime backgrounds from the npz + JSON cache written by :func:`_save_e2_cache`."""
+    data = np.load(path)  # allow_pickle is False by default, so this is safe
+    meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    backgrounds = {
+        regime: [data[f"{regime}_{i}"] for i in range(int(count))]
+        for regime, count in meta["counts"].items()
+    }
+    return backgrounds, meta["sites"]
+
+
+def _cmd_e2(args: argparse.Namespace, repo_root: Path) -> int:
+    from .config import E2Config
+    from .e2 import run_e2_sweep
+    from .surrogate.fit import SurrogateDistributions
+
+    config = E2Config()
+    cache_path = repo_root / ".fathom" / "e2_backgrounds.npz"
+    if cache_path.exists() and not args.refresh:
+        backgrounds, sites = _load_e2_cache(cache_path)
+        print(f"loaded cached backgrounds from {cache_path}")
+    else:
+        backgrounds, sites = _gather_e2_backgrounds(args, repo_root, config)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _save_e2_cache(cache_path, backgrounds, sites)
+    present = {r: len(bs) for r, bs in backgrounds.items() if bs}
+    print(f"backgrounds by regime: {present}")
+
+    # The known-truth probe is the closed SD2 hybrid surrogate, loaded from the committed E1 lineage
+    # so E2 needs no re-fit and no train-side read: the surrogate is already closed and committed.
+    e1_lineage = json.loads(
+        (repo_root / "docs" / "e1_realdata_lineage.json").read_text(encoding="utf-8")
+    )
+    distributions = SurrogateDistributions.from_dict(e1_lineage["fitted_distributions"])
+
+    payload = run_e2_sweep(backgrounds, sites, distributions, config, args.seed)
+    tag = "q{}n{}b{}".format(
+        len(backgrounds.get("quiet", [])),
+        len(backgrounds.get("nominal", [])),
+        len(backgrounds.get("busy", [])),
+    )
+    run_id = f"e2-frontend-{tag}-{args.seed}"
+    payload["run_id"] = run_id
+    payload["seed"] = args.seed
+    payload["surrogate_probe_run_id"] = e1_lineage.get("run_id")
+
+    out_path = (repo_root / args.out).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    blob_text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    out_path.write_text(blob_text, encoding="utf-8")
+    artifact_hash = sha256_hex(blob_text.encode("utf-8"))
+
+    selected = payload["selected"]
+    flip = payload["flip_clause"]
+    if selected:
+        print(
+            f"\nE2 selected: {selected['key']}  "
+            f"separability={selected['separability']['separability_db']:.2f} dB  "
+            f"flatness_holds={selected['flatness']['flatness_holds']}"
+        )
+    print(f"flip clause fired={flip['fired']} branch={flip['branch']}")
+    print(f"lineage: {out_path}  sha256={artifact_hash}")
+    print(f"run id: {run_id}")
+    return 0 if (selected is not None and not flip["fired"]) else 4
+
+
 def _cmd_capture_audio(args: argparse.Namespace, repo_root: Path) -> int:
     import io
 
@@ -974,6 +1147,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--refresh", action="store_true", help="Re-download and re-extract segments, skip cache."
     )
 
+    e2 = sub.add_parser(
+        "e2", help="Run the E2 front-end sweep across the site regimes (closes SD4)."
+    )
+    e2.add_argument("--seed", type=int, default=20260804, help="Run seed.")
+    e2.add_argument(
+        "--window-seconds", type=float, default=30.0, help="Background window length per site."
+    )
+    e2.add_argument(
+        "--out", default="docs/e2_front_end_lineage.json", help="Committed lineage path."
+    )
+    e2.add_argument("--r2", action="store_true", help="Read audio from the R2 bucket (env).")
+    e2.add_argument("--local", help="Read audio from a local directory.")
+    e2.add_argument(
+        "--refresh", action="store_true", help="Re-download and re-extract backgrounds, skip cache."
+    )
+
     capaudio = sub.add_parser(
         "capture-audio", help="Measure and persist sample rate/duration from stored audio headers."
     )
@@ -1059,6 +1248,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_fetch_quiet_tail(args, repo_root)
     if args.command == "e1-realdata":
         return _cmd_e1_realdata(args, repo_root)
+    if args.command == "e2":
+        return _cmd_e2(args, repo_root)
     if args.command == "capture-audio":
         return _cmd_capture_audio(args, repo_root)
     if args.command == "audio-lineage":

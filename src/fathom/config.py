@@ -220,6 +220,61 @@ class E1RealDataConfig(_Frozen):
     owner_certified: OwnerCertifiedFigures = OwnerCertifiedFigures()
 
 
+class E2Config(_Frozen):
+    """Configuration of the E2 front-end parameter sweep that closes SD4.
+
+    The sweepable front end is the linear split-window family SD4 selects; the grid axes are
+    the frequency resolution through the window length, the overlap, the incoherent integration, the
+    taper (Hann against a Thomson multitaper), and the normalizer (split-window against temporal
+    median). Separability injects the closed SD2 hybrid surrogate as a known-truth comb
+    at one operating-point SNR across every site; flatness is scored as the site-invariance
+    of the normalized background and whether one threshold holds a fixed FAR across sites.
+    The operating point and threshold are set once across the site set, never per site. Compute and
+    determinism are constraints each config must clear. No absolute level appears; every level is
+    a signal-to-noise ratio and the owner-certified figures remain unset.
+    """
+
+    band_low_hz: float = 4.0
+    band_high_hz: float = 150.0
+    analysis_rate_hz: float = 1000.0
+
+    # Grid axes.
+    window_lengths_s: tuple[float, ...] = (2.0, 4.0, 8.0)
+    overlaps: tuple[float, ...] = (0.5, 0.75)
+    integration_counts: tuple[int, ...] = (1, 4)
+    tapers: tuple[str, ...] = ("hann", "multitaper")
+    normalizers: tuple[str, ...] = ("split_window", "temporal_median")
+    multitaper_n_tapers: int = 5
+    multitaper_nw: float = 3.0
+    sw_half_window_hz: float = 6.0
+    sw_guard_hz: float = 1.0
+    sw_truncation: int = 3
+    tm_window_frames: int = 8
+
+    # Scoring and the operating point, set once across sites.
+    operating_snr_db: float = 6.0
+    injection_draws: int = 4
+    target_far: float = 0.05
+    far_tolerance: float = 2.5
+    separability_floor_db: float = 6.0
+    backgrounds_per_regime: int = 3
+
+    # Constraints.
+    compute_budget_proxy: float = 150000.0
+
+    # Injection kinematic and propagation proxies, dimensionless, as in E1.
+    bearing0_deg: float = 90.0
+    closest_proxy: float = 1.0
+    speed_proxy: float = 0.5
+    doppler_peak: float = 0.02
+    t_cpa_fraction: float = 0.5
+    absorption_coeff: float = 0.001
+    multipath_depth: float = 0.3
+    multipath_spacing_hz: float = 90.0
+    spreading_exponent: float = 1.0
+    owner_certified: OwnerCertifiedFigures = OwnerCertifiedFigures()
+
+
 class AuditConfig(_Frozen):
     """Configuration of the split-integrity audit.
 
