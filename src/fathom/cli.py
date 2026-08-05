@@ -881,6 +881,131 @@ def _cmd_e3(args: argparse.Namespace, repo_root: Path) -> int:
     return 0 if selected is not None else 4
 
 
+def _realclass_cohort(
+    repo_root: Path, held: list[dict[str, object]]
+) -> tuple[dict[str, float], dict[str, str | None], set[str]]:
+    """Return per-held-vessel SNR and site, and the E3 training background object shas.
+
+    The signal-to-noise and site come from the ledger's audio-backed presences and corpus objects;
+    the E3 training background shas are reconstructed by the same deterministic order the E3 gather
+    used (the two smallest per regime), so the disjointness of the test recordings from the training
+    backgrounds can be attested from committed data.
+    """
+    from .ledger import Ledger
+
+    held_vessels = {str(h["vessel_id"]) for h in held}
+    ledger = Ledger(repo_root / ".fathom" / "ledger.db")
+    try:
+        objects = {str(o["sha256"]): o for o in ledger.get_corpus_objects()}
+        snr: dict[str, float] = {}
+        site: dict[str, str | None] = {}
+        for presence in ledger.get_vessel_presences():
+            vessel = str(presence["vessel_id"])
+            value = presence.get("audio_snr_db")
+            quiet = presence.get("audio_quiet_tail") == 1
+            if vessel in held_vessels and quiet and value is not None:
+                snr_db = float(value)  # type: ignore[arg-type]
+                if vessel not in snr or snr_db > snr[vessel]:
+                    snr[vessel] = snr_db
+                    obj = objects.get(str(presence["recording_sha"]))
+                    site[vessel] = str(obj["site"]) if obj and obj.get("site") is not None else None
+        candidates: dict[str, list[dict[str, object]]] = {r: [] for r in _E2_REGIMES}
+        for obj in objects.values():
+            regime = _regime_of(str(obj["source_id"]))
+            if regime in candidates and obj.get("raw_key") and _as_int(obj.get("byte_count")) > 0:
+                candidates[regime].append(obj)
+        e3_train: set[str] = set()
+        for regime in _E2_REGIMES:
+            ordered = sorted(candidates[regime], key=lambda o: _as_int(o.get("byte_count")))
+            for obj in ordered[:2]:
+                e3_train.add(str(obj["sha256"]))
+    finally:
+        ledger.close()
+    return snr, site, e3_train
+
+
+def _cmd_e3_realclass(args: argparse.Namespace, repo_root: Path) -> int:
+    from .config import E3Config
+    from .detectors import LearnedDetector
+    from .e3_realclass import run_e3_realclass
+
+    config = E3Config()
+    e3_lineage = json.loads(
+        (repo_root / "docs" / "e3_detection_lineage.json").read_text(encoding="utf-8")
+    )
+    learned = LearnedDetector.from_dict(e3_lineage["learned_detector"])
+    thresholds = {c["name"]: float(c["threshold"]) for c in e3_lineage["candidates"]}
+    floor_thresholds = {c["name"]: float(c["floor_threshold"]) for c in e3_lineage["candidates"]}
+    surrogate_reference = {
+        c["name"]: float(c["operating_point_sensitivity"]) for c in e3_lineage["candidates"]
+    }
+
+    cache_path = repo_root / ".fathom" / "e1_segments.npz"
+    if cache_path.exists() and not args.refresh:
+        _, held, backgrounds = _load_segments_cache(cache_path)
+        print(f"loaded the held-out cohort from {cache_path}")
+    else:
+        _, held, backgrounds = _gather_e1_segments(args, repo_root, config)
+
+    snr, site, e3_train = _realclass_cohort(repo_root, held)
+    vessel_windows = [
+        {
+            "vessel_id": str(h["vessel_id"]),
+            "site": site.get(str(h["vessel_id"])),
+            "snr_db": snr[str(h["vessel_id"])],
+            "samples": h["samples"],
+        }
+        for h in held
+        if str(h["vessel_id"]) in snr
+    ]
+    background_windows = [{"site": "e1_background", "samples": b} for b in backgrounds]
+    held_shas = sorted({str(h["object"]) for h in held})
+    leak_attestation = {
+        "test_class": "e1_held_out_quiet_vessels",
+        "held_out_recording_shas": held_shas,
+        "e3_training_shas": sorted(e3_train),
+        "disjoint": set(held_shas).isdisjoint(e3_train),
+    }
+    print(f"cohort: {len(vessel_windows)} real vessels, {len(background_windows)} backgrounds")
+
+    payload = run_e3_realclass(
+        vessel_windows,
+        background_windows,
+        learned,
+        thresholds,
+        floor_thresholds,
+        surrogate_reference,
+        leak_attestation,
+        config,
+    )
+    run_id = f"e3-realclass-held{len(vessel_windows)}-{args.seed}"
+    payload["run_id"] = run_id
+    payload["seed"] = args.seed
+    payload["e3_run_id"] = e3_lineage.get("run_id")
+
+    out_path = (repo_root / args.out).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    blob_text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    out_path.write_text(blob_text, encoding="utf-8")
+    artifact_hash = sha256_hex(blob_text.encode("utf-8"))
+
+    branch = payload["branch"]
+    print("\nreal-class detection rates (real vessels / E3 surrogate):")
+    for detector in payload["per_detector"]:
+        print(
+            f"  {detector['name']:11s} real={detector['real_detection_rate']:.2f}  "
+            f"op-point={detector['operating_point_detection_rate']:.2f}  "
+            f"4Hz-floor={detector['floor_4hz_detection_rate']:.2f}  "
+            f"FA={detector['false_alarm_rate']:.2f}  "
+            f"surrogate={detector['e3_surrogate_operating_sensitivity']:.2f}"
+        )
+    print(f"\nbranch: {branch['selected']}  closes_sd5={branch['closes_sd5']}")
+    print(f"disjoint (leak): {leak_attestation['disjoint']}")
+    print(f"lineage: {out_path}  sha256={artifact_hash}")
+    print(f"run id: {run_id}")
+    return 0 if branch["closes_sd5"] else 4
+
+
 def _cmd_capture_audio(args: argparse.Namespace, repo_root: Path) -> int:
     import io
 
@@ -1333,6 +1458,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--refresh", action="store_true", help="Re-download and re-extract backgrounds, skip cache."
     )
 
+    e3rc = sub.add_parser(
+        "e3-realclass",
+        help="Run the frozen E3 detectors against the real held-out quiet class (settles SD5).",
+    )
+    e3rc.add_argument("--seed", type=int, default=20260805, help="Run tag seed (no randomness).")
+    e3rc.add_argument(
+        "--window-seconds", type=float, default=120.0, help="Vessel/background window length."
+    )
+    e3rc.add_argument(
+        "--out", default="docs/e3_realclass_lineage.json", help="Committed lineage path."
+    )
+    e3rc.add_argument("--r2", action="store_true", help="Read audio from the R2 bucket (env).")
+    e3rc.add_argument("--local", help="Read audio from a local directory.")
+    e3rc.add_argument(
+        "--refresh", action="store_true", help="Re-gather the held-out cohort, skip the cache."
+    )
+
     capaudio = sub.add_parser(
         "capture-audio", help="Measure and persist sample rate/duration from stored audio headers."
     )
@@ -1422,6 +1564,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_e2(args, repo_root)
     if args.command == "e3":
         return _cmd_e3(args, repo_root)
+    if args.command == "e3-realclass":
+        return _cmd_e3_realclass(args, repo_root)
     if args.command == "capture-audio":
         return _cmd_capture_audio(args, repo_root)
     if args.command == "audio-lineage":

@@ -24,6 +24,7 @@ a sub-band, which E3 uses to report sensitivity at the four-hertz shaft floor SD
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import numpy.typing as npt
@@ -227,3 +228,17 @@ class LearnedDetector:
             "feature_mean": list(self.feature_mean),
             "feature_std": list(self.feature_std),
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> LearnedDetector:
+        """Reconstruct a trained detector from a committed record, so it applies frozen.
+
+        WO-9 runs the E3 learned detector against the real class with its E3-committed weights,
+        retraining nothing, so this restores the weights and their standardisation verbatim.
+        """
+        return cls(
+            weights=tuple(float(w) for w in cast(list[float], data["weights"])),
+            bias=float(cast(float, data["bias"])),
+            feature_mean=tuple(float(m) for m in cast(list[float], data["feature_mean"])),
+            feature_std=tuple(float(s) for s in cast(list[float], data["feature_std"])),
+        )

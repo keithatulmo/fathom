@@ -319,6 +319,10 @@ class E3Config(_Frozen):
     # point by at least this margin (SD5 memo Section 6); otherwise integration is selected and the
     # learned detector's ceiling is the runner-up. A proof-scope threshold recorded in lineage.
     learned_material_margin: float = 0.1
+    # WO-9 real-class test: a detector "detects" the real quiet class when its detection rate hits
+    # this floor (a majority of the vessel's windows) and clears its own real-background false-alarm
+    # rate. A proof-scope threshold recorded in lineage; raw rates are reported so E&P can judge.
+    realclass_success_floor: float = 0.5
 
     # Injection kinematic and propagation proxies, dimensionless, as in E1 and E2.
     bearing0_deg: float = 90.0

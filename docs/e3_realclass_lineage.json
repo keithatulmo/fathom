@@ -1,0 +1,312 @@
+{
+  "analysis_rate_hz": 1000.0,
+  "band_hz": [
+    4.0,
+    150.0
+  ],
+  "branch": {
+    "closes_sd5": false,
+    "reason": "The learned detector detects the real quiet vessels at only 0.01 against its surrogate 0.95, so its E3 win was a surrogate-broadband artifact; SD2's broadband balance and E3 reopen.",
+    "selected": "learned_artifact"
+  },
+  "cohort": {
+    "n_backgrounds": 22,
+    "n_vessels": 13,
+    "snr_range_db": [
+      6.1228693572155235,
+      17.58399447426549
+    ]
+  },
+  "e3_floor_thresholds": {
+    "cfar": 57.59844086341835,
+    "integration": 39.66782252510395,
+    "learned": 0.9999661139623438
+  },
+  "e3_run_id": "e3-detection-q6n6b6-20260805",
+  "e3_thresholds": {
+    "cfar": 704.6563273063013,
+    "integration": 401.95927277168965,
+    "learned": 0.4723274235374182
+  },
+  "floor_band_hz": [
+    4.0,
+    12.0
+  ],
+  "front_end": "res0.5Hz_ov0.75_int1_hann_split_window_hw6_g1_t3",
+  "leak_attestation": {
+    "disjoint": true,
+    "e3_training_shas": [
+      "096e120881a468ce41e5046ead91cb90f9027ca02410c30befb1d06f42378d1b",
+      "7e9f242f7f5b10ab112625a011593d9833c7d2527954c411b92eb6d40186013e",
+      "95febb94b4db6a10c11f438ca90d53f4b44499fab6590dddc08e88fff126f2fb",
+      "ac4c8b987675abd42e4ed36ac8f21b79664ed3558d3bba2e52d5d61b2b767b46",
+      "b6cc1a6d5aca8e042673afee57be256924b3cf97d7c92409d9e95df0bbffec72",
+      "cef953ee2251161628ede455a9e96e2b970e7228c951e4495048e16c54d695e8"
+    ],
+    "held_out_recording_shas": [
+      "12c084e5ab0e7ba892a633e8937531c65c0edbf3b022a89295df1d8bd04015ba",
+      "1cc327cae0a419215955a51c14db3d2dcfa6fbac7f1bd1ac3e3af10ed78b290f",
+      "2c0ba52de571b044dbb26e503d12974dd585dc915c799c1a40280e3df0130a95",
+      "6053b1af20ce93a32df83753ca566c6ee3ad2e8b533b196aec3ee4232e547f89",
+      "6542e6f2582bef7e100a5fa3df7a1a65ea70a284e184ca7fcba3261e2ce601cd",
+      "78a4d93b30a7ed58648ac265c9dc367e6120d732ae6bcf6e7f8026c9633080ea",
+      "8e0abcc685180d7659a94a5484748a4f49cc92dd3907245e32858c9fed052b4e",
+      "be3c2fccb4e95ed598caabfe1d50f3e30153fd2c2c0d57a6d5c0184bbc68e7a1",
+      "c87f0349013225008075b26792be4202b96712a5e59e7c25abb7e4ec966f52ad",
+      "eeb156660dd3ecd83bda9003e4e85d3f4e0dec36c6cfe7fb0c52be06d98ca9f9",
+      "efa89d800874ef2c19a1815f7731f991b3f795434ab9b373c7e6481b167088b9",
+      "f36109a233e90bc9ab002b255362394d01dcd39207d2e4348bf464b8b3988dcd"
+    ],
+    "test_class": "e1_held_out_quiet_vessels"
+  },
+  "operating_snr_db": 6.0,
+  "owner_certified": {
+    "confirmer_pd": null,
+    "detection_range_r": null
+  },
+  "per_detector": [
+    {
+      "detection_vs_snr": [
+        {
+          "detection_rate": 0.16666666666666666,
+          "snr_db": 6.1228693572155235,
+          "vessel_id": "MMSI338183566-FREESPOOL"
+        },
+        {
+          "detection_rate": 0.3333333333333333,
+          "snr_db": 6.311054235073876,
+          "vessel_id": "MMSI338032253-CHINOOK"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 7.122883771078914,
+          "vessel_id": "MMSI367462480-TALOS_IV"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 7.490498257679659,
+          "vessel_id": "MMSI367534250-JAMIE_HANNA"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 8.953667073452385,
+          "vessel_id": "IMO8994128"
+        },
+        {
+          "detection_rate": 1.0,
+          "snr_db": 11.228414277338896,
+          "vessel_id": "IMO9592965"
+        },
+        {
+          "detection_rate": 0.16666666666666666,
+          "snr_db": 11.468697888557593,
+          "vessel_id": "IMO8975794"
+        },
+        {
+          "detection_rate": 1.0,
+          "snr_db": 11.836065970986196,
+          "vessel_id": "IMO8990902"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 11.917349187177031,
+          "vessel_id": "MMSI338108739-NASTY_HABITS"
+        },
+        {
+          "detection_rate": 0.16666666666666666,
+          "snr_db": 13.500171651369602,
+          "vessel_id": "IMO8994104"
+        },
+        {
+          "detection_rate": 0.16666666666666666,
+          "snr_db": 14.991200167885903,
+          "vessel_id": "MMSI319800000-PENNY_PERFECT"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 15.47450609453719,
+          "vessel_id": "IMO9585077"
+        },
+        {
+          "detection_rate": 0.08333333333333333,
+          "snr_db": 17.58399447426549,
+          "vessel_id": "IMO5072905"
+        }
+      ],
+      "e3_surrogate_operating_sensitivity": 0.0,
+      "false_alarm_rate": 0.06818181818181818,
+      "floor_4hz_detection_rate": 0.019230769230769232,
+      "name": "cfar",
+      "operating_point_detection_rate": 0.125,
+      "per_site_detection_rate": {
+        "florida_keys_fk01": 0.2222222222222222,
+        "monterey_mb01": 0.5,
+        "stellwagen_sb01": 0.17708333333333334
+      },
+      "real_detection_rate": 0.2371794871794872
+    },
+    {
+      "detection_vs_snr": [
+        {
+          "detection_rate": 0.08333333333333333,
+          "snr_db": 6.1228693572155235,
+          "vessel_id": "MMSI338183566-FREESPOOL"
+        },
+        {
+          "detection_rate": 0.3333333333333333,
+          "snr_db": 6.311054235073876,
+          "vessel_id": "MMSI338032253-CHINOOK"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 7.122883771078914,
+          "vessel_id": "MMSI367462480-TALOS_IV"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 7.490498257679659,
+          "vessel_id": "MMSI367534250-JAMIE_HANNA"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 8.953667073452385,
+          "vessel_id": "IMO8994128"
+        },
+        {
+          "detection_rate": 0.8333333333333334,
+          "snr_db": 11.228414277338896,
+          "vessel_id": "IMO9592965"
+        },
+        {
+          "detection_rate": 0.16666666666666666,
+          "snr_db": 11.468697888557593,
+          "vessel_id": "IMO8975794"
+        },
+        {
+          "detection_rate": 0.75,
+          "snr_db": 11.836065970986196,
+          "vessel_id": "IMO8990902"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 11.917349187177031,
+          "vessel_id": "MMSI338108739-NASTY_HABITS"
+        },
+        {
+          "detection_rate": 0.25,
+          "snr_db": 13.500171651369602,
+          "vessel_id": "IMO8994104"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 14.991200167885903,
+          "vessel_id": "MMSI319800000-PENNY_PERFECT"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 15.47450609453719,
+          "vessel_id": "IMO9585077"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 17.58399447426549,
+          "vessel_id": "IMO5072905"
+        }
+      ],
+      "e3_surrogate_operating_sensitivity": 0.0,
+      "false_alarm_rate": 0.06060606060606061,
+      "floor_4hz_detection_rate": 0.0,
+      "name": "integration",
+      "operating_point_detection_rate": 0.10416666666666666,
+      "per_site_detection_rate": {
+        "florida_keys_fk01": 0.13888888888888887,
+        "monterey_mb01": 0.375,
+        "stellwagen_sb01": 0.15625000000000003
+      },
+      "real_detection_rate": 0.18589743589743588
+    },
+    {
+      "detection_vs_snr": [
+        {
+          "detection_rate": 0.0,
+          "snr_db": 6.1228693572155235,
+          "vessel_id": "MMSI338183566-FREESPOOL"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 6.311054235073876,
+          "vessel_id": "MMSI338032253-CHINOOK"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 7.122883771078914,
+          "vessel_id": "MMSI367462480-TALOS_IV"
+        },
+        {
+          "detection_rate": 0.08333333333333333,
+          "snr_db": 7.490498257679659,
+          "vessel_id": "MMSI367534250-JAMIE_HANNA"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 8.953667073452385,
+          "vessel_id": "IMO8994128"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 11.228414277338896,
+          "vessel_id": "IMO9592965"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 11.468697888557593,
+          "vessel_id": "IMO8975794"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 11.836065970986196,
+          "vessel_id": "IMO8990902"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 11.917349187177031,
+          "vessel_id": "MMSI338108739-NASTY_HABITS"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 13.500171651369602,
+          "vessel_id": "IMO8994104"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 14.991200167885903,
+          "vessel_id": "MMSI319800000-PENNY_PERFECT"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 15.47450609453719,
+          "vessel_id": "IMO9585077"
+        },
+        {
+          "detection_rate": 0.0,
+          "snr_db": 17.58399447426549,
+          "vessel_id": "IMO5072905"
+        }
+      ],
+      "e3_surrogate_operating_sensitivity": 0.9490740740740741,
+      "false_alarm_rate": 0.056818181818181816,
+      "floor_4hz_detection_rate": 0.0,
+      "name": "learned",
+      "operating_point_detection_rate": 0.020833333333333332,
+      "per_site_detection_rate": {
+        "florida_keys_fk01": 0.0,
+        "monterey_mb01": 0.0,
+        "stellwagen_sb01": 0.010416666666666666
+      },
+      "real_detection_rate": 0.00641025641025641
+    }
+  ],
+  "run_id": "e3-realclass-held13-20260805",
+  "seed": 20260805,
+  "success_floor": 0.5
+}
